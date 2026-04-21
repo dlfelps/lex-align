@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(uv tool *)",
+      "Bash(python -m site --user-base)",
+      "Read(//c/Users/dlfel/.local/bin/**)",
+      "Read(//c/Users/dlfel/AppData/Roaming/Python/**)",
+      "Bash(python -c \"import sys; print\\(sys.executable\\)\")",
+      "Bash(uv run *)",
+      "Bash(adr-agent first-run-audit *)",
+      "Bash(python -m adr_agent first-run-audit)",
+      "Bash(python -m adr_agent.cli first-run-audit)",
+      "Bash(adr-agent promote *)",
+      "Bash(.venv/Scripts/adr-agent --help)",
+      "Bash(python -m adr_agent.cli --help)",
+      "Bash(.venv/Scripts/adr-agent promote *)",
+      "Bash(.venv/Scripts/adr-agent rebuild-index *)",
+      "Bash(.venv/Scripts/adr-agent show *)",
+      "Bash(python *)"
+    ]
+  }
+}

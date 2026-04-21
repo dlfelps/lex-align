@@ -69,28 +69,35 @@ def generate_report(sessions_dir: Path, store: DecisionStore, since_str: Optiona
     automated = [e for e in events if e.get("event_type") == "automated"]
 
     retrieval_cmds = {"show", "plan", "history", "check-constraint"}
-    write_cmds = {"propose", "promote"}
-
     retrieval_events = [e for e in voluntary if e.get("command") in retrieval_cmds]
-    write_events = [e for e in voluntary if e.get("command") in write_cmds]
-
     retrieval_counts: Counter = Counter(e.get("command") for e in retrieval_events)
-    write_counts: Counter = Counter(e.get("command") for e in write_events)
 
     most_viewed = _most_common_targets(retrieval_events, "show")
     most_queried = _most_common_targets(retrieval_events, "plan")
+
+    # Derive write counts from decision files (authoritative ground truth).
+    # Session logs are gitignored and may not reflect promotions done outside
+    # an active Claude Code session.
+    all_decisions = store.load_all()
+    since_date = since.date() if since else None
+    written = [
+        d for d in all_decisions
+        if d.status in (Status.ACCEPTED, Status.SUPERSEDED, Status.REJECTED)
+        and (since_date is None or d.created >= since_date)
+    ]
+    promote_count = sum(1 for d in written if d.observed_via is not None)
+    propose_count = sum(1 for d in written if d.observed_via is None)
+    total_writes = promote_count + propose_count
 
     reconciliation_events = [e for e in automated if e.get("command") == "reconciliation"]
     session_start_recon = len([e for e in reconciliation_events if "session" in e.get("targets", [])])
     post_edit_recon = len(reconciliation_events) - session_start_recon
 
     promotion_opportunities = [e for e in automated if e.get("command") == "pre-tool-use"]
-    promotions_done = write_counts.get("promote", 0)
     opportunity_count = len(promotion_opportunities)
-    promotion_ratio = f"{int(promotions_done/opportunity_count*100)}%" if opportunity_count else "N/A"
+    promotion_ratio = f"{int(promote_count/opportunity_count*100)}%" if opportunity_count else "N/A"
 
-    decisions = store.load_all()
-    observed = [d for d in decisions if d.status == Status.OBSERVED]
+    observed = [d for d in all_decisions if d.status == Status.OBSERVED]
     seed_count = sum(1 for d in observed if d.observed_via == ObservedVia.SEED)
     recon_count = sum(1 for d in observed if d.observed_via == ObservedVia.RECONCILIATION)
     manual_count = sum(1 for d in observed if d.observed_via == ObservedVia.MANUAL)
@@ -112,11 +119,9 @@ def generate_report(sessions_dir: Path, store: DecisionStore, since_str: Optiona
         lines.append(f"  {cmd:<20} {count}{extra}")
 
     lines.append("")
-    total_writes = sum(write_counts.values())
     lines.append(f"Writes ({total_writes} records created)")
-    lines.append(f"  {'propose':<20} {write_counts.get('propose', 0)}")
-    promote_count = write_counts.get("promote", 0)
-    lines.append(f"  {'promote':<20} {promote_count}   observed → accepted")
+    lines.append(f"  {'propose':<20} {propose_count}")
+    lines.append(f"  {'promote':<20} {promote_count}   observed -> accepted")
 
     lines.append("")
     lines.append("Integrity")
@@ -124,7 +129,7 @@ def generate_report(sessions_dir: Path, store: DecisionStore, since_str: Optiona
     lines.append(f"    via session start:          {session_start_recon}")
     lines.append(f"    via post-edit hook:         {post_edit_recon}")
     lines.append(f"  Promotion opportunities:     {opportunity_count}   (edit-time prompts fired)")
-    lines.append(f"  Promotions resulting:         {promotions_done}   ({promotion_ratio} of opportunities)")
+    lines.append(f"  Promotions resulting:         {promote_count}   ({promotion_ratio} of opportunities)")
 
     lines.append("")
     lines.append(f"Observed entries: {len(observed)} total")

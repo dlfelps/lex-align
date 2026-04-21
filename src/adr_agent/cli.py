@@ -14,7 +14,7 @@ from .models import Alternative, Confidence, Outcome, Reversible, Scope, Status
 from .reconciler import get_runtime_deps, reconcile
 from .report import generate_report
 from .session import EventLogger, SessionState, get_current_session_id
-from .settings import add_adr_hooks, check_hooks_present, remove_adr_hooks
+from .settings import add_adr_hooks, check_hooks_present, detect_adr_command, remove_adr_hooks
 from .store import DecisionStore, STOP_WORDS, create_observed, tokenize
 
 
@@ -49,6 +49,19 @@ def _get_logger(project_root: Path) -> Optional[EventLogger]:
     return None
 
 
+def _get_logger_required(project_root: Path) -> EventLogger:
+    """Return a logger, creating an ad-hoc session when no session is active.
+
+    Used by write commands (promote, propose) so events are always recorded.
+    """
+    import uuid
+    sessions_dir = _sessions_dir(project_root)
+    session_id = get_current_session_id(sessions_dir)
+    if not session_id:
+        session_id = f"standalone-{uuid.uuid4()}"
+    return EventLogger(sessions_dir, session_id)
+
+
 def _first_sentence(text: str) -> str:
     if not text:
         return ""
@@ -80,7 +93,34 @@ Before initializing, please note:
    when individual decisions are innocuous.
 """
 
-_FIRST_RUN_AUDIT_PROMPT = """\
+_CLAUDE_MD_MARKER = "## adr-agent"
+
+
+def _claude_md_section(command: str = "adr-agent") -> str:
+    return f"""\
+## adr-agent
+
+Before starting any non-trivial task, run:
+  {command} plan "<task description>"
+This surfaces relevant decisions, previously-rejected alternatives, and active
+constraints. Do this before writing code, not after.
+
+When modifying pyproject.toml dependencies:
+- Run `{command} propose` BEFORE making the change if it represents a new decision.
+- If you added or removed a dependency without proposing first, run
+  `{command} promote <id>` to capture rationale while you still have context.
+
+When you encounter an OBSERVED entry for a dependency you are actively using:
+- Run `{command} promote <id>`. You likely have enough context from the current
+  task. If you genuinely don't, leave it observed.
+
+Run `{command} show <id>` before touching code governed by a decision. Do not
+repeat evaluation work already recorded in alternatives.
+"""
+
+
+def _first_run_audit_prompt(command: str = "adr-agent") -> str:
+    return f"""\
 "I have just initialized adr-agent in this repository. Review the list
 of **OBSERVED** dependencies provided in the architecture brief.
 
@@ -91,7 +131,7 @@ or CLI library):
    examining the code, imports, and documentation.
 2. **Analyze** the pros and cons of this choice in the context of this
    specific project.
-3. **Execute** `adr-agent promote <id>` to convert these into **ACCEPTED**
+3. **Execute** `{command} promote <id>` to convert these into **ACCEPTED**
    entries. Include the rationale and at least one alternative considered
    in the promotion flow.
 
@@ -151,6 +191,23 @@ def init(yes: bool) -> None:
     # Configure hooks
     add_adr_hooks(project_root)
 
+    # CLAUDE.md — agent behavioral rules
+    command = detect_adr_command(project_root)
+    section = _claude_md_section(command)
+    claude_md = project_root / "CLAUDE.md"
+    if not claude_md.exists():
+        claude_md.write_text(section)
+        claude_md_msg = "Created CLAUDE.md with adr-agent behavioral rules."
+    elif _CLAUDE_MD_MARKER not in claude_md.read_text():
+        if yes or click.confirm("CLAUDE.md already exists. Append adr-agent section?", default=True):
+            existing = claude_md.read_text()
+            claude_md.write_text(existing.rstrip() + "\n\n" + section)
+            claude_md_msg = "Appended adr-agent section to CLAUDE.md."
+        else:
+            claude_md_msg = "Skipped CLAUDE.md (no changes made)."
+    else:
+        claude_md_msg = "CLAUDE.md already contains adr-agent section (skipped)."
+
     click.echo("Initialized adr-agent.")
     if seeded:
         click.echo(f"Seeded {len(seeded)} observed entr{'y' if len(seeded)==1 else 'ies'} from pyproject.toml:")
@@ -164,9 +221,10 @@ def init(yes: bool) -> None:
             "To backfill rationale for existing dependencies, ask your AI agent to\n"
             "run the First-Run Audit:\n"
         )
-        click.echo(_FIRST_RUN_AUDIT_PROMPT)
+        click.echo(_first_run_audit_prompt(detect_adr_command(project_root)))
         click.echo("(You can display this prompt again with `adr-agent first-run-audit`.)")
     click.echo("Hooks configured in .claude/settings.json.")
+    click.echo(claude_md_msg)
 
 
 # ── show ──────────────────────────────────────────────────────────────────────
@@ -488,9 +546,8 @@ def propose(dependency: Optional[str], relevant_adrs: Optional[str], scope_path:
             store.save(sup_decision)
 
     # Log and update session state
-    logger = _get_logger(project_root)
-    if logger:
-        logger.log_voluntary("propose", [adr_id])
+    logger = _get_logger_required(project_root)
+    logger.log_voluntary("propose", [adr_id])
 
     sessions_dir = _sessions_dir(project_root)
     session_id = get_current_session_id(sessions_dir)
@@ -580,9 +637,8 @@ def promote(adr_id: str, context_text: Optional[str]) -> None:
 
     path = store.save(decision)
 
-    logger = _get_logger(project_root)
-    if logger:
-        logger.log_voluntary("promote", [decision.id])
+    logger = _get_logger_required(project_root)
+    logger.log_voluntary("promote", [decision.id])
 
     click.echo(f"\nPromoted {decision.id} to accepted. Written: {path}")
 
@@ -677,7 +733,8 @@ def privacy() -> None:
 @main.command("first-run-audit")
 def first_run_audit() -> None:
     """Display the First-Run Audit prompt for backfilling observed entries."""
-    click.echo(_FIRST_RUN_AUDIT_PROMPT)
+    project_root = _find_project_root()
+    click.echo(_first_run_audit_prompt(detect_adr_command(project_root)))
 
 
 # ── hook subcommands ──────────────────────────────────────────────────────────

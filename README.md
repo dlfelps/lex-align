@@ -21,7 +21,7 @@ The package is not yet on PyPI. Install from the prebuilt wheel in the `dist/` d
 **With uv (recommended):**
 
 ```bash
-uv add --dev path/to/adr_agent-0.1.0-py3-none-any.whl
+uv pip install path/to/adr_agent-0.1.0-py3-none-any.whl
 ```
 
 **With pip:**
