@@ -519,6 +519,210 @@ def test_promote_with_context_option(
     assert result.exit_code == 0, result.output
 
 
+# ── propose non-interactive (--yes) ──────────────────────────────────────────
+
+def test_propose_yes_creates_decision(
+    runner: CliRunner, initialized_project: Path, mock_llm, mocker
+):
+    mocker.patch("adr_agent.cli._find_project_root", return_value=initialized_project)
+    result = runner.invoke(main, [
+        "propose", "--yes",
+        "--title", "Use Redis for caching",
+        "--rationale", "We need fast cache access",
+        "--confidence", "high",
+        "--tags", "cache,redis",
+        "--paths", "src/cache.py",
+        "--constraints", "latency-sla",
+    ])
+    assert result.exit_code == 0, result.output
+    assert "Written" in result.output
+    store = DecisionStore(initialized_project / ".adr-agent" / "decisions")
+    decisions = store.load_all()
+    assert len(decisions) == 1
+    d = decisions[0]
+    assert d.status == Status.ACCEPTED
+    assert "redis" in d.title.lower()
+    assert d.confidence.value == "high"
+    assert "cache" in d.scope.tags
+    assert "redis" in d.scope.tags
+    assert "src/cache.py" in d.scope.paths
+    assert "latency-sla" in d.constraints_depended_on
+
+
+def test_propose_yes_requires_title(
+    runner: CliRunner, initialized_project: Path, mock_llm, mocker
+):
+    mocker.patch("adr_agent.cli._find_project_root", return_value=initialized_project)
+    result = runner.invoke(main, ["propose", "--yes", "--rationale", "some reason"])
+    assert result.exit_code != 0
+    assert "--title" in result.output
+
+
+def test_propose_yes_requires_rationale(
+    runner: CliRunner, initialized_project: Path, mock_llm, mocker
+):
+    mocker.patch("adr_agent.cli._find_project_root", return_value=initialized_project)
+    result = runner.invoke(main, ["propose", "--yes", "--title", "Use X"])
+    assert result.exit_code != 0
+    assert "--rationale" in result.output
+
+
+def test_propose_yes_with_alternatives_json(
+    runner: CliRunner, initialized_project: Path, mock_llm, mocker
+):
+    mocker.patch("adr_agent.cli._find_project_root", return_value=initialized_project)
+    alts = json.dumps([
+        {"name": "Memcached", "outcome": "not-chosen", "reason": "Less features", "reversible": "cheap", "constraint": None}
+    ])
+    result = runner.invoke(main, [
+        "propose", "--yes",
+        "--title", "Use Redis",
+        "--rationale", "Speed",
+        "--alternatives-json", alts,
+    ])
+    assert result.exit_code == 0, result.output
+    store = DecisionStore(initialized_project / ".adr-agent" / "decisions")
+    d = store.load_all()[0]
+    assert len(d.alternatives) == 1
+    assert d.alternatives[0].name == "Memcached"
+
+
+def test_propose_yes_supersedes(
+    runner: CliRunner, initialized_project: Path, mock_llm, store: DecisionStore, mocker
+):
+    mocker.patch("adr_agent.cli._find_project_root", return_value=initialized_project)
+    old = Decision(
+        id="ADR-0001",
+        title="Use Postgres sessions",
+        status=Status.ACCEPTED,
+        created=datetime.date.today(),
+        confidence=Confidence.MEDIUM,
+        scope=Scope(),
+    )
+    store.save(old)
+    result = runner.invoke(main, [
+        "propose", "--yes",
+        "--title", "Use Redis for sessions",
+        "--rationale", "Better performance",
+        "--supersedes", "ADR-0001",
+    ])
+    assert result.exit_code == 0, result.output
+    updated_old = store.get("ADR-0001")
+    assert updated_old.status == Status.SUPERSEDED
+
+
+def test_propose_yes_invalid_alternatives_json(
+    runner: CliRunner, initialized_project: Path, mock_llm, mocker
+):
+    mocker.patch("adr_agent.cli._find_project_root", return_value=initialized_project)
+    result = runner.invoke(main, [
+        "propose", "--yes",
+        "--title", "Use X",
+        "--rationale", "reason",
+        "--alternatives-json", "not-json",
+    ])
+    assert result.exit_code != 0
+    assert "not valid JSON" in result.output
+
+
+# ── promote non-interactive (--yes) ──────────────────────────────────────────
+
+def test_promote_yes_converts_observed(
+    runner: CliRunner, initialized_project: Path, store: DecisionStore, mock_llm, mocker
+):
+    mocker.patch("adr_agent.cli._find_project_root", return_value=initialized_project)
+    store.save(Decision(
+        id="ADR-0001",
+        title="Uses redis",
+        status=Status.OBSERVED,
+        created=datetime.date.today(),
+        confidence=Confidence.MEDIUM,
+        scope=Scope(tags=["redis"]),
+        observed_via=ObservedVia.SEED,
+    ))
+    result = runner.invoke(main, [
+        "promote", "ADR-0001", "--yes",
+        "--context", "Redis was chosen for its speed",
+        "--confidence", "high",
+        "--tags", "redis,cache",
+        "--constraints", "latency-sla",
+    ])
+    assert result.exit_code == 0, result.output
+    assert "Promoted" in result.output
+    updated = store.get("ADR-0001")
+    assert updated.status == Status.ACCEPTED
+    assert updated.confidence.value == "high"
+    assert "redis" in updated.scope.tags
+    assert "latency-sla" in updated.constraints_depended_on
+
+
+def test_promote_yes_requires_context(
+    runner: CliRunner, initialized_project: Path, store: DecisionStore, mock_llm, mocker
+):
+    mocker.patch("adr_agent.cli._find_project_root", return_value=initialized_project)
+    store.save(Decision(
+        id="ADR-0001",
+        title="Uses redis",
+        status=Status.OBSERVED,
+        created=datetime.date.today(),
+        confidence=Confidence.MEDIUM,
+        scope=Scope(tags=["redis"]),
+        observed_via=ObservedVia.SEED,
+    ))
+    result = runner.invoke(main, ["promote", "ADR-0001", "--yes"])
+    assert result.exit_code != 0
+    assert "--context" in result.output
+
+
+def test_promote_yes_with_alternatives_json(
+    runner: CliRunner, initialized_project: Path, store: DecisionStore, mock_llm, mocker
+):
+    mocker.patch("adr_agent.cli._find_project_root", return_value=initialized_project)
+    store.save(Decision(
+        id="ADR-0001",
+        title="Uses redis",
+        status=Status.OBSERVED,
+        created=datetime.date.today(),
+        confidence=Confidence.MEDIUM,
+        scope=Scope(tags=["redis"]),
+        observed_via=ObservedVia.SEED,
+    ))
+    alts = json.dumps([
+        {"name": "Memcached", "outcome": "not-chosen", "reason": "Less features", "reversible": "cheap", "constraint": None}
+    ])
+    result = runner.invoke(main, [
+        "promote", "ADR-0001", "--yes",
+        "--context", "Redis chosen for speed",
+        "--alternatives-json", alts,
+    ])
+    assert result.exit_code == 0, result.output
+    updated = store.get("ADR-0001")
+    assert len(updated.alternatives) == 1
+    assert updated.alternatives[0].name == "Memcached"
+
+
+def test_promote_yes_invalid_alternatives_json(
+    runner: CliRunner, initialized_project: Path, store: DecisionStore, mock_llm, mocker
+):
+    mocker.patch("adr_agent.cli._find_project_root", return_value=initialized_project)
+    store.save(Decision(
+        id="ADR-0001",
+        title="Uses redis",
+        status=Status.OBSERVED,
+        created=datetime.date.today(),
+        confidence=Confidence.MEDIUM,
+        scope=Scope(tags=["redis"]),
+        observed_via=ObservedVia.SEED,
+    ))
+    result = runner.invoke(main, [
+        "promote", "ADR-0001", "--yes",
+        "--context", "Redis chosen for speed",
+        "--alternatives-json", "{bad json}",
+    ])
+    assert result.exit_code != 0
+    assert "not valid JSON" in result.output
+
+
 # ── doctor ────────────────────────────────────────────────────────────────────
 
 def test_doctor_healthy(runner: CliRunner, initialized_project: Path, mocker):

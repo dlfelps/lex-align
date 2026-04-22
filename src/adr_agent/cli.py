@@ -116,6 +116,12 @@ When you encounter an OBSERVED entry for a dependency you are actively using:
 
 Run `{command} show <id>` before touching code governed by a decision. Do not
 repeat evaluation work already recorded in alternatives.
+
+IMPORTANT for AI agents: NEVER run `{command} propose` or `{command} promote`
+without supplying all required flags and `--yes`. These commands have interactive
+prompts that will hang a non-interactive session. Always use flags to provide
+every field. Run `{command} propose --help` or `{command} promote --help` to see
+the required flags, then pass `--yes` to skip all confirmation prompts.
 """
 
 
@@ -446,8 +452,44 @@ def check_constraint(tag: str) -> None:
 @click.option("--dependency", default=None, help="Dependency change that triggered this proposal.")
 @click.option("--relevant-adrs", default=None, help="Comma-separated ADR IDs relevant to this proposal.")
 @click.option("--path", "scope_path", default=None, help="File path scope hint.")
-def propose(dependency: Optional[str], relevant_adrs: Optional[str], scope_path: Optional[str]) -> None:
-    """Interactively record a new architectural decision."""
+@click.option("--title", default=None, help="Decision title (one sentence).")
+@click.option("--rationale", default=None, help="Rationale: what context led to this choice.")
+@click.option(
+    "--confidence",
+    "confidence_flag",
+    default=None,
+    type=click.Choice(["low", "medium", "high"]),
+    help="Confidence level.",
+)
+@click.option("--tags", default=None, help="Scope tags (comma-separated).")
+@click.option("--paths", "paths_flag", default=None, help="Scope paths (comma-separated).")
+@click.option("--constraints", default=None, help="Constraints depended on (comma-separated).")
+@click.option("--supersedes", default=None, help="ADR IDs superseded by this decision (comma-separated).")
+@click.option(
+    "--alternatives-json",
+    default=None,
+    help=(
+        'Alternatives as a JSON array, e.g. \'[{"name":"X","outcome":"not-chosen",'
+        '"reason":"Y","reversible":"cheap","constraint":null}]\'. '
+        "Bypasses the interactive alternatives loop."
+    ),
+)
+@click.option("--yes", "-y", is_flag=True, help="Non-interactive: skip all prompts and use provided flags or defaults.")
+def propose(
+    dependency: Optional[str],
+    relevant_adrs: Optional[str],
+    scope_path: Optional[str],
+    title: Optional[str],
+    rationale: Optional[str],
+    confidence_flag: Optional[str],
+    tags: Optional[str],
+    paths_flag: Optional[str],
+    constraints: Optional[str],
+    supersedes: Optional[str],
+    alternatives_json: Optional[str],
+    yes: bool,
+) -> None:
+    """Record a new architectural decision (non-interactive with --yes)."""
     project_root = _find_project_root()
     _require_initialized(project_root)
     store = _make_store(project_root)
@@ -465,71 +507,99 @@ def propose(dependency: Optional[str], relevant_adrs: Optional[str], scope_path:
                 relevant_decisions.append(d)
                 click.echo(f"Relevant decision: {d.id}: {d.title}")
 
-    title = click.prompt("Decision title (one sentence)", default=default_title or "")
-    rationale = click.prompt("Rationale (what context led to this choice)")
-    confidence_raw = click.prompt(
-        "Confidence",
-        type=click.Choice(["low", "medium", "high"]),
-        default="medium",
-    )
-    confidence = Confidence(confidence_raw)
+    if yes:
+        if not title:
+            raise click.UsageError("--title is required when using --yes.")
+        if not rationale:
+            raise click.UsageError("--rationale is required when using --yes.")
+        title_val = title
+        rationale_val = rationale
+        confidence = Confidence(confidence_flag or "medium")
+        tags_raw = tags or default_scope_tags
+        paths_raw = paths_flag or default_scope_paths
+        constraints_raw = constraints or ""
+        supersedes_raw = supersedes or ""
+    else:
+        title_val = click.prompt("Decision title (one sentence)", default=title or default_title or "")
+        rationale_val = click.prompt("Rationale (what context led to this choice)", default=rationale or "")
+        confidence_raw = click.prompt(
+            "Confidence",
+            type=click.Choice(["low", "medium", "high"]),
+            default=confidence_flag or "medium",
+        )
+        confidence = Confidence(confidence_raw)
+        tags_raw = click.prompt("Scope tags (comma-separated, or empty)", default=tags or default_scope_tags)
+        paths_raw = click.prompt("Scope paths (comma-separated, or empty)", default=paths_flag or default_scope_paths)
+        constraints_raw = click.prompt("Constraints depended on (comma-separated, or empty)", default=constraints or "")
+        supersedes_raw = click.prompt("Supersedes (ADR IDs, comma-separated, or empty)", default=supersedes or "")
 
-    tags_raw = click.prompt("Scope tags (comma-separated, or empty)", default=default_scope_tags)
-    paths_raw = click.prompt("Scope paths (comma-separated, or empty)", default=default_scope_paths)
-    constraints_raw = click.prompt("Constraints depended on (comma-separated, or empty)", default="")
-    supersedes_raw = click.prompt("Supersedes (ADR IDs, comma-separated, or empty)", default="")
-
-    tags = [t.strip() for t in tags_raw.split(",") if t.strip()]
-    paths = [p.strip() for p in paths_raw.split(",") if p.strip()]
-    constraints = [c.strip() for c in constraints_raw.split(",") if c.strip()]
-    supersedes = [s.strip() for s in supersedes_raw.split(",") if s.strip()]
+    tag_list = [t.strip() for t in tags_raw.split(",") if t.strip()]
+    path_list = [p.strip() for p in paths_raw.split(",") if p.strip()]
+    constraint_list = [c.strip() for c in constraints_raw.split(",") if c.strip()]
+    supersedes_list = [s.strip() for s in supersedes_raw.split(",") if s.strip()]
 
     alternatives: list[Alternative] = []
-    while click.confirm("Add an alternative?", default=False):
-        alt_name = click.prompt("Alternative name")
-        alt_outcome_raw = click.prompt(
-            "Outcome",
-            type=click.Choice(["chosen", "not-chosen", "rejected"]),
-        )
-        alt_reason = click.prompt("Reason")
-        alt_reversible_raw = click.prompt(
-            "Reversible",
-            type=click.Choice(["cheap", "costly", "no"]),
-        )
-        alt_constraint = click.prompt("Constraint (optional, or empty)", default="") or None
-        alternatives.append(
-            Alternative(
-                name=alt_name,
-                outcome=Outcome(alt_outcome_raw),
-                reason=alt_reason,
-                reversible=Reversible(alt_reversible_raw),
-                constraint=alt_constraint,
+    if alternatives_json is not None:
+        try:
+            raw_alts = json.loads(alternatives_json)
+        except json.JSONDecodeError as exc:
+            raise click.UsageError(f"--alternatives-json is not valid JSON: {exc}") from exc
+        for item in raw_alts:
+            alternatives.append(
+                Alternative(
+                    name=item["name"],
+                    outcome=Outcome(item["outcome"]),
+                    reason=item["reason"],
+                    reversible=Reversible(item["reversible"]),
+                    constraint=item.get("constraint") or None,
+                )
             )
-        )
+    elif not yes:
+        while click.confirm("Add an alternative?", default=False):
+            alt_name = click.prompt("Alternative name")
+            alt_outcome_raw = click.prompt(
+                "Outcome",
+                type=click.Choice(["chosen", "not-chosen", "rejected"]),
+            )
+            alt_reason = click.prompt("Reason")
+            alt_reversible_raw = click.prompt(
+                "Reversible",
+                type=click.Choice(["cheap", "costly", "no"]),
+            )
+            alt_constraint = click.prompt("Constraint (optional, or empty)", default="") or None
+            alternatives.append(
+                Alternative(
+                    name=alt_name,
+                    outcome=Outcome(alt_outcome_raw),
+                    reason=alt_reason,
+                    reversible=Reversible(alt_reversible_raw),
+                    constraint=alt_constraint,
+                )
+            )
 
     # Generate prose body via LLM
     alt_summary = "; ".join(f"{a.name} ({a.outcome.value})" for a in alternatives) if alternatives else ""
     client = llm_module.get_client()
     context_text, decision_text, consequences_text = client.generate_adr_body(
-        title=title,
-        rationale=rationale,
+        title=title_val,
+        rationale=rationale_val,
         alternatives_summary=alt_summary,
-        constraints=constraints,
-        supersedes=supersedes,
+        constraints=constraint_list,
+        supersedes=supersedes_list,
     )
 
     adr_id = store.next_id()
     from .models import Decision
     decision = Decision(
         id=adr_id,
-        title=title,
+        title=title_val,
         status=Status.ACCEPTED,
         created=datetime.date.today(),
         confidence=confidence,
-        scope=Scope(tags=tags, paths=paths),
+        scope=Scope(tags=tag_list, paths=path_list),
         alternatives=alternatives,
-        supersedes=supersedes,
-        constraints_depended_on=constraints,
+        supersedes=supersedes_list,
+        constraints_depended_on=constraint_list,
         context_text=context_text,
         decision_text=decision_text,
         consequences_text=consequences_text,
@@ -537,7 +607,7 @@ def propose(dependency: Optional[str], relevant_adrs: Optional[str], scope_path:
     path = store.save(decision)
 
     # Update superseded_by on parent decisions
-    for sup_id in supersedes:
+    for sup_id in supersedes_list:
         sup_decision = store.get(sup_id)
         if sup_decision:
             if adr_id not in sup_decision.superseded_by:
@@ -563,8 +633,37 @@ def propose(dependency: Optional[str], relevant_adrs: Optional[str], scope_path:
 @main.command()
 @click.argument("adr_id")
 @click.option("--context", "context_text", default=None, help="Context explaining the original choice.")
-def promote(adr_id: str, context_text: Optional[str]) -> None:
-    """Promote an observed entry to accepted by capturing rationale."""
+@click.option(
+    "--confidence",
+    "confidence_flag",
+    default=None,
+    type=click.Choice(["low", "medium", "high"]),
+    help="Confidence level.",
+)
+@click.option("--tags", default=None, help="Scope tags (comma-separated).")
+@click.option("--paths", "paths_flag", default=None, help="Scope paths (comma-separated).")
+@click.option("--constraints", default=None, help="Constraints depended on (comma-separated).")
+@click.option(
+    "--alternatives-json",
+    default=None,
+    help=(
+        'Alternatives to append as a JSON array, e.g. \'[{"name":"X","outcome":"not-chosen",'
+        '"reason":"Y","reversible":"cheap","constraint":null}]\'. '
+        "Bypasses the interactive alternatives loop."
+    ),
+)
+@click.option("--yes", "-y", is_flag=True, help="Non-interactive: skip all prompts and use provided flags or defaults.")
+def promote(
+    adr_id: str,
+    context_text: Optional[str],
+    confidence_flag: Optional[str],
+    tags: Optional[str],
+    paths_flag: Optional[str],
+    constraints: Optional[str],
+    alternatives_json: Optional[str],
+    yes: bool,
+) -> None:
+    """Promote an observed entry to accepted (non-interactive with --yes)."""
     project_root = _find_project_root()
     _require_initialized(project_root)
     store = _make_store(project_root)
@@ -577,46 +676,68 @@ def promote(adr_id: str, context_text: Optional[str]) -> None:
 
     click.echo(f"Promoting {decision.id}: {decision.title}")
 
-    if context_text is None:
-        context_text = click.prompt(
-            "Provide context for why this dependency was originally adopted "
-            "(or describe what you know about it)"
+    if yes:
+        if not context_text:
+            raise click.UsageError("--context is required when using --yes.")
+        confidence = Confidence(confidence_flag or "medium")
+        tags_raw = tags if tags is not None else ",".join(decision.scope.tags)
+        paths_raw = paths_flag if paths_flag is not None else ",".join(decision.scope.paths)
+        constraints_raw = constraints or ""
+    else:
+        if context_text is None:
+            context_text = click.prompt(
+                "Provide context for why this dependency was originally adopted "
+                "(or describe what you know about it)"
+            )
+        confidence_raw = click.prompt(
+            "Confidence",
+            type=click.Choice(["low", "medium", "high"]),
+            default=confidence_flag or "medium",
         )
+        confidence = Confidence(confidence_raw)
+        tags_raw = click.prompt("Scope tags (comma-separated, or empty)", default=tags or ",".join(decision.scope.tags))
+        paths_raw = click.prompt("Scope paths (comma-separated, or empty)", default=paths_flag or ",".join(decision.scope.paths))
+        constraints_raw = click.prompt("Constraints depended on (comma-separated, or empty)", default=constraints or "")
 
-    confidence_raw = click.prompt(
-        "Confidence",
-        type=click.Choice(["low", "medium", "high"]),
-        default="medium",
-    )
-    confidence = Confidence(confidence_raw)
-
-    tags_raw = click.prompt("Scope tags (comma-separated, or empty)", default=",".join(decision.scope.tags))
-    paths_raw = click.prompt("Scope paths (comma-separated, or empty)", default=",".join(decision.scope.paths))
-    constraints_raw = click.prompt("Constraints depended on (comma-separated, or empty)", default="")
-
-    tags = [t.strip() for t in tags_raw.split(",") if t.strip()]
-    paths = [p.strip() for p in paths_raw.split(",") if p.strip()]
-    constraints = [c.strip() for c in constraints_raw.split(",") if c.strip()]
+    tag_list = [t.strip() for t in tags_raw.split(",") if t.strip()]
+    path_list = [p.strip() for p in paths_raw.split(",") if p.strip()]
+    constraint_list = [c.strip() for c in constraints_raw.split(",") if c.strip()]
 
     alternatives: list[Alternative] = list(decision.alternatives)
-    if click.confirm("Add alternatives?", default=False):
-        while True:
-            alt_name = click.prompt("Alternative name")
-            alt_outcome_raw = click.prompt("Outcome", type=click.Choice(["chosen", "not-chosen", "rejected"]))
-            alt_reason = click.prompt("Reason")
-            alt_reversible_raw = click.prompt("Reversible", type=click.Choice(["cheap", "costly", "no"]))
-            alt_constraint = click.prompt("Constraint (optional, or empty)", default="") or None
+    if alternatives_json is not None:
+        try:
+            raw_alts = json.loads(alternatives_json)
+        except json.JSONDecodeError as exc:
+            raise click.UsageError(f"--alternatives-json is not valid JSON: {exc}") from exc
+        for item in raw_alts:
             alternatives.append(
                 Alternative(
-                    name=alt_name,
-                    outcome=Outcome(alt_outcome_raw),
-                    reason=alt_reason,
-                    reversible=Reversible(alt_reversible_raw),
-                    constraint=alt_constraint,
+                    name=item["name"],
+                    outcome=Outcome(item["outcome"]),
+                    reason=item["reason"],
+                    reversible=Reversible(item["reversible"]),
+                    constraint=item.get("constraint") or None,
                 )
             )
-            if not click.confirm("Add another alternative?", default=False):
-                break
+    elif not yes:
+        if click.confirm("Add alternatives?", default=False):
+            while True:
+                alt_name = click.prompt("Alternative name")
+                alt_outcome_raw = click.prompt("Outcome", type=click.Choice(["chosen", "not-chosen", "rejected"]))
+                alt_reason = click.prompt("Reason")
+                alt_reversible_raw = click.prompt("Reversible", type=click.Choice(["cheap", "costly", "no"]))
+                alt_constraint = click.prompt("Constraint (optional, or empty)", default="") or None
+                alternatives.append(
+                    Alternative(
+                        name=alt_name,
+                        outcome=Outcome(alt_outcome_raw),
+                        reason=alt_reason,
+                        reversible=Reversible(alt_reversible_raw),
+                        constraint=alt_constraint,
+                    )
+                )
+                if not click.confirm("Add another alternative?", default=False):
+                    break
 
     # Generate prose body via LLM
     client = llm_module.get_client()
@@ -628,8 +749,8 @@ def promote(adr_id: str, context_text: Optional[str]) -> None:
 
     decision.status = Status.ACCEPTED
     decision.confidence = confidence
-    decision.scope = Scope(tags=tags, paths=paths)
-    decision.constraints_depended_on = constraints
+    decision.scope = Scope(tags=tag_list, paths=path_list)
+    decision.constraints_depended_on = constraint_list
     decision.alternatives = alternatives
     decision.context_text = new_context
     decision.decision_text = new_decision
