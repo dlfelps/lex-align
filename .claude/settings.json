@@ -5,31 +5,31 @@
         "hooks": [
           {
             "type": "command",
-            "command": "uv run adr-agent session-start"
+            "command": "python .claude/adr-agent-hook.py session-start"
           }
         ]
       }
     ],
     "PreToolUse": [
       {
-        "matcher": "Edit|Write|MultiEdit",
         "hooks": [
           {
             "type": "command",
-            "command": "uv run adr-agent pre-tool-use"
+            "command": "python .claude/adr-agent-hook.py pre-tool-use"
           }
-        ]
+        ],
+        "matcher": "Edit|Write|MultiEdit"
       }
     ],
     "PostToolUse": [
       {
-        "matcher": "Edit|Write|MultiEdit",
         "hooks": [
           {
             "type": "command",
-            "command": "uv run adr-agent post-tool-use"
+            "command": "python .claude/adr-agent-hook.py post-tool-use"
           }
-        ]
+        ],
+        "matcher": "Edit|Write|MultiEdit"
       }
     ],
     "SessionEnd": [
@@ -37,7 +37,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "uv run adr-agent session-end"
+            "command": "python .claude/adr-agent-hook.py session-end"
           }
         ]
       }
