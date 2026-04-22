@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from adr_agent.settings import (
+    _WRAPPER_SCRIPT_NAME,
     add_adr_hooks,
     check_hooks_present,
     load_settings,
@@ -50,7 +51,7 @@ def test_add_hooks_merges_existing(tmp_path: Path):
     pre_hooks = settings["hooks"]["PreToolUse"]
     commands = [h["command"] for e in pre_hooks for h in e.get("hooks", [])]
     assert "my-tool pre" in commands
-    assert "adr-agent pre-tool-use" in commands
+    assert any("adr-agent" in c for c in commands)
 
 
 def test_remove_hooks(tmp_path: Path):
@@ -96,6 +97,33 @@ def test_check_hooks_present_none(tmp_path: Path):
 def test_settings_file_location(tmp_path: Path):
     add_adr_hooks(tmp_path)
     assert (tmp_path / ".claude" / "settings.json").exists()
+
+
+def test_add_hooks_writes_wrapper_script(tmp_path: Path):
+    add_adr_hooks(tmp_path)
+    script = tmp_path / ".claude" / _WRAPPER_SCRIPT_NAME
+    assert script.exists()
+    content = script.read_text()
+    assert "shutil.which" in content
+    assert "adr-agent" in content
+
+
+def test_hook_commands_reference_wrapper_script(tmp_path: Path):
+    add_adr_hooks(tmp_path)
+    settings = load_settings(tmp_path)
+    all_commands = [
+        h["command"]
+        for entries in settings["hooks"].values()
+        for e in entries
+        for h in e.get("hooks", [])
+    ]
+    assert all(_WRAPPER_SCRIPT_NAME in cmd for cmd in all_commands)
+
+
+def test_remove_hooks_deletes_wrapper_script(tmp_path: Path):
+    add_adr_hooks(tmp_path)
+    remove_adr_hooks(tmp_path)
+    assert not (tmp_path / ".claude" / _WRAPPER_SCRIPT_NAME).exists()
 
 
 def test_save_and_load_roundtrip(tmp_path: Path):

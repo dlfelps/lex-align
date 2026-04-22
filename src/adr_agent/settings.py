@@ -8,6 +8,40 @@ import sys
 from pathlib import Path
 
 _ADR_MARKER = "adr-agent"
+_WRAPPER_SCRIPT_NAME = "adr-agent-hook.py"
+
+# Cross-platform hook wrapper: tries direct PATH install first, then uv run,
+# exits 0 gracefully if adr-agent is not found so collaborators without the
+# tool don't see hook failures.
+_WRAPPER_SCRIPT_CONTENT = '''\
+#!/usr/bin/env python3
+import shutil
+import subprocess
+import sys
+
+
+def main():
+    args = sys.argv[1:]
+    stdin_data = sys.stdin.buffer.read()
+
+    if shutil.which("adr-agent"):
+        sys.exit(subprocess.run(["adr-agent"] + args, input=stdin_data).returncode)
+
+    if shutil.which("uv"):
+        r = subprocess.run(["uv", "run", "adr-agent"] + args, input=stdin_data)
+        if r.returncode == 0:
+            sys.exit(0)
+
+    print(
+        "adr-agent not installed; skipping hook. "
+        "Install with: pip install adr-agent",
+        file=sys.stderr,
+    )
+    sys.exit(0)
+
+
+main()
+'''
 
 _HOOK_EVENTS = {
     "SessionStart": {
@@ -93,8 +127,19 @@ def save_settings(settings: dict, project_root: Path) -> None:
     path.write_text(json.dumps(settings, indent=2) + "\n")
 
 
+def _write_wrapper_script(project_root: Path) -> None:
+    script_path = project_root / ".claude" / _WRAPPER_SCRIPT_NAME
+    script_path.parent.mkdir(parents=True, exist_ok=True)
+    script_path.write_text(_WRAPPER_SCRIPT_CONTENT)
+    try:
+        script_path.chmod(script_path.stat().st_mode | 0o111)
+    except OSError:
+        pass  # Windows — chmod is a no-op anyway
+
+
 def add_adr_hooks(project_root: Path) -> None:
-    command = detect_adr_command(project_root)
+    _write_wrapper_script(project_root)
+    command = f"python .claude/{_WRAPPER_SCRIPT_NAME}"
     hooks_config = _build_hooks_config(command)
 
     settings = load_settings(project_root)
@@ -127,6 +172,10 @@ def remove_adr_hooks(project_root: Path) -> None:
             del hooks[event]
 
     save_settings(settings, project_root)
+
+    script_path = project_root / ".claude" / _WRAPPER_SCRIPT_NAME
+    if script_path.exists():
+        script_path.unlink()
 
 
 def check_hooks_present(project_root: Path) -> dict[str, bool]:
