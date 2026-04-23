@@ -61,6 +61,30 @@ def _get_logger_required(project_root: Path) -> EventLogger:
     return EventLogger(sessions_dir, session_id)
 
 
+def _registry_guidance(terms: set, registry) -> list[str]:
+    """Surface registry packages whose names appear in the planning prompt.
+
+    Returns pre-formatted two-space-indented lines for inclusion in the plan
+    output under the REGISTRY GUIDANCE heading.
+    """
+    if registry is None:
+        return []
+    hits: list[str] = []
+    for name in sorted(registry.packages):
+        token = name.replace("_", "").replace("-", "")
+        if name in terms or token in {t.replace("_", "").replace("-", "") for t in terms}:
+            rule = registry.packages[name]
+            suffix = ""
+            if rule.replacement:
+                suffix += f" → use `{rule.replacement}` instead"
+            vc = rule.version_constraint_str()
+            if vc:
+                suffix += f" (required {vc})"
+            reason = f" — {rule.reason}" if rule.reason else ""
+            hits.append(f"  [{rule.status.value}] {name}{suffix}{reason}")
+    return hits
+
+
 def _first_sentence(text: str) -> str:
     if not text:
         return ""
@@ -277,6 +301,8 @@ def show(adr_id: str) -> None:
 @click.argument("prompt")
 def plan(prompt: str) -> None:
     """Get relevant architectural context for a task before starting."""
+    from .registry import load_registry
+
     project_root = _find_project_root()
     _require_initialized(project_root)
     store = _make_store(project_root)
@@ -286,14 +312,17 @@ def plan(prompt: str) -> None:
         logger.log_voluntary("plan", [prompt[:200]])
 
     terms = tokenize(prompt) - STOP_WORDS
-    if not terms:
+    registry = load_registry(project_root)
+    registry_hits = _registry_guidance(terms, registry) if registry is not None else []
+
+    if not terms and not registry_hits:
         click.echo("No meaningful terms found in prompt.")
         click.echo("Run `lex-align propose` when ready to record a decision.")
         return
 
-    candidates = store.search_by_terms(terms)
-    if not candidates:
-        click.echo("No relevant decisions found for this task.")
+    candidates = store.search_by_terms(terms) if terms else []
+    if not candidates and not registry_hits:
+        click.echo("No relevant decisions or registry matches found for this task.")
         click.echo("Run `lex-align propose` when ready to record a decision.")
         return
 
@@ -302,7 +331,14 @@ def plan(prompt: str) -> None:
 
     lines: list[str] = []
 
+    if registry_hits:
+        lines.append("REGISTRY GUIDANCE")
+        for entry in registry_hits:
+            lines.append(entry)
+
     if accepted:
+        if lines:
+            lines.append("")
         lines.append("RELEVANT DECISIONS")
         for d in sorted(accepted, key=lambda x: x.created, reverse=True):
             lines.append(f"  {d.id} ({d.status.value}) {d.title}")
@@ -477,9 +513,27 @@ def propose(
     consequences_prose: Optional[str],
 ) -> None:
     """Record a new architectural decision (non-interactive with --yes)."""
+    from .registry import Action, PackageStatus, load_registry
+
     project_root = _find_project_root()
     _require_initialized(project_root)
     store = _make_store(project_root)
+
+    # If a dependency is named and the registry says it is banned or
+    # deprecated, the registry is authoritative — refuse the propose.
+    if dependency:
+        registry = load_registry(project_root)
+        if registry is not None:
+            verdict = registry.lookup(dependency)
+            if verdict.action is Action.BLOCK and verdict.status in (
+                PackageStatus.BANNED, PackageStatus.DEPRECATED
+            ):
+                msg = f"Cannot propose `{dependency}`: enterprise registry status is {verdict.status.value}."
+                if verdict.reason:
+                    msg += f"\n  reason: {verdict.reason}"
+                if verdict.replacement:
+                    msg += f"\n  use instead: {verdict.replacement}"
+                raise click.ClickException(msg)
 
     # Pre-fill defaults from triggered context
     default_title = f"Add {dependency}" if dependency else ""
