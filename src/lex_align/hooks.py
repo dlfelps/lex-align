@@ -13,20 +13,20 @@ from .store import DecisionStore
 
 
 def _find_project_root() -> Path:
-    """Walk up from cwd looking for .adr-agent directory."""
+    """Walk up from cwd looking for .lex-align directory."""
     path = Path.cwd()
     for parent in [path] + list(path.parents):
-        if (parent / ".adr-agent").exists():
+        if (parent / ".lex-align").exists():
             return parent
     return path
 
 
 def _make_store(project_root: Path) -> DecisionStore:
-    return DecisionStore(project_root / ".adr-agent" / "decisions")
+    return DecisionStore(project_root / ".lex-align" / "decisions")
 
 
 def _sessions_dir(project_root: Path) -> Path:
-    return project_root / ".adr-agent" / "sessions"
+    return project_root / ".lex-align" / "sessions"
 
 
 def handle_session_start(event: dict, project_root: Path) -> str:
@@ -63,10 +63,10 @@ def _build_brief(store: DecisionStore, new_observed: list[str]) -> str:
             tag = "  [new: added by reconciliation]" if d.scope.tags and d.scope.tags[0] in new_observed else ""
             lines.append(f"  {d.id}  {d.title}{tag}")
 
-    lines.append("\nRun `adr-agent show <id>` for full rationale and alternatives.")
-    lines.append('Run `adr-agent plan "<prompt>"` to get relevant context before starting a task.')
-    lines.append("Run `adr-agent propose` to record a new decision or supersession.")
-    lines.append("Run `adr-agent promote <id>` to capture rationale for an observed entry.")
+    lines.append("\nRun `lex-align show <id>` for full rationale and alternatives.")
+    lines.append('Run `lex-align plan "<prompt>"` to get relevant context before starting a task.')
+    lines.append("Run `lex-align propose` to record a new decision or supersession.")
+    lines.append("Run `lex-align promote <id>` to capture rationale for an observed entry.")
     return "\n".join(lines)
 
 
@@ -129,7 +129,7 @@ def _handle_dep_edit_pre(
             lines.append(f"  {d.id}: {d.title} ({d.status.value})")
 
     lines.append("\nIf this change is covered by an existing decision, proceed.")
-    lines.append("If it represents a new or superseding decision, run `adr-agent propose` first.")
+    lines.append("If it represents a new or superseding decision, run `lex-align propose` first.")
     lines.append("The propose flow will pre-fill the dependency name and relevant decisions; you provide the rationale.")
     return "\n".join(lines)
 
@@ -162,7 +162,7 @@ def _handle_code_edit_pre(
                 f"{d.id}: {d.title} (observed; no rationale captured)\n"
                 f"  Added: {d.created} ({via})\n"
                 f"If you have context for why `{imp}` was originally adopted, consider running "
-                f"`adr-agent promote {d.id}` to capture it.\n"
+                f"`lex-align promote {d.id}` to capture it.\n"
                 f"If you don't have context, no action is needed."
             )
 
@@ -216,9 +216,9 @@ def handle_post_tool_use(event: dict, project_root: Path) -> Optional[str]:
 
     if unresolved:
         lines.append(
-            "\nYou modified dependencies without calling `adr-agent propose` first. "
+            "\nYou modified dependencies without calling `lex-align propose` first. "
             "The affected packages are now observed entries. "
-            "Run `adr-agent promote <id>` if you can capture rationale now."
+            "Run `lex-align promote <id>` if you can capture rationale now."
         )
 
     return "\n".join(lines) if lines else None
@@ -239,7 +239,7 @@ def handle_session_end(event: dict, project_root: Path) -> Optional[str]:
     lines = ["This session had unresolved dependency changes:"]
     for pkg in unresolved:
         lines.append(f"  {pkg} (added/removed; no rationale recorded)")
-    lines.append("\nIf you have context for these changes, run `adr-agent promote <id>` to capture rationale.")
+    lines.append("\nIf you have context for these changes, run `lex-align promote <id>` to capture rationale.")
     return "\n".join(lines)
 
 

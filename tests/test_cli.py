@@ -8,9 +8,9 @@ from pathlib import Path
 import pytest
 from click.testing import CliRunner
 
-from adr_agent.cli import main
-from adr_agent.models import Confidence, Decision, ObservedVia, Scope, Status
-from adr_agent.store import DecisionStore
+from lex_align.cli import main
+from lex_align.models import Confidence, Decision, ObservedVia, Scope, Status
+from lex_align.store import DecisionStore
 
 
 @pytest.fixture
@@ -20,29 +20,29 @@ def runner():
 
 @pytest.fixture
 def initialized_project(tmp_path: Path) -> Path:
-    (tmp_path / ".adr-agent" / "decisions").mkdir(parents=True)
-    (tmp_path / ".adr-agent" / "sessions").mkdir(parents=True)
+    (tmp_path / ".lex-align" / "decisions").mkdir(parents=True)
+    (tmp_path / ".lex-align" / "sessions").mkdir(parents=True)
     return tmp_path
 
 
 @pytest.fixture
 def store(initialized_project: Path) -> DecisionStore:
-    return DecisionStore(initialized_project / ".adr-agent" / "decisions")
+    return DecisionStore(initialized_project / ".lex-align" / "decisions")
 
 
 # ── init ──────────────────────────────────────────────────────────────────────
 
 def test_init_creates_directories(runner: CliRunner, tmp_path: Path, mocker):
-    mocker.patch("adr_agent.cli._FIRST_RUN_MARKER", tmp_path / ".marker")
+    mocker.patch("lex_align.cli._FIRST_RUN_MARKER", tmp_path / ".marker")
     with runner.isolated_filesystem(temp_dir=tmp_path) as td:
         result = runner.invoke(main, ["init", "--yes"])
         assert result.exit_code == 0, result.output
-        assert Path(td, ".adr-agent", "decisions").exists()
-        assert Path(td, ".adr-agent", "sessions").exists()
+        assert Path(td, ".lex-align", "decisions").exists()
+        assert Path(td, ".lex-align", "sessions").exists()
 
 
 def test_init_configures_hooks(runner: CliRunner, tmp_path: Path, mocker):
-    mocker.patch("adr_agent.cli._FIRST_RUN_MARKER", tmp_path / ".marker")
+    mocker.patch("lex_align.cli._FIRST_RUN_MARKER", tmp_path / ".marker")
     with runner.isolated_filesystem(temp_dir=tmp_path) as td:
         result = runner.invoke(main, ["init", "--yes"])
         assert result.exit_code == 0
@@ -53,7 +53,7 @@ def test_init_configures_hooks(runner: CliRunner, tmp_path: Path, mocker):
 
 
 def test_init_seeds_from_pyproject(runner: CliRunner, tmp_path: Path, mocker):
-    mocker.patch("adr_agent.cli._FIRST_RUN_MARKER", tmp_path / ".marker")
+    mocker.patch("lex_align.cli._FIRST_RUN_MARKER", tmp_path / ".marker")
     with runner.isolated_filesystem(temp_dir=tmp_path) as td:
         Path(td, "pyproject.toml").write_text(
             '[project]\ndependencies = ["fastapi>=0.100"]\n'
@@ -61,7 +61,7 @@ def test_init_seeds_from_pyproject(runner: CliRunner, tmp_path: Path, mocker):
         result = runner.invoke(main, ["init", "--yes"])
         assert result.exit_code == 0
         assert "fastapi" in result.output.lower()
-        store = DecisionStore(Path(td, ".adr-agent", "decisions"))
+        store = DecisionStore(Path(td, ".lex-align", "decisions"))
         decisions = store.load_all()
         assert len(decisions) == 1
         assert decisions[0].status == Status.OBSERVED
@@ -72,14 +72,14 @@ def test_init_seeds_from_pyproject(runner: CliRunner, tmp_path: Path, mocker):
 
 
 def test_init_idempotent(runner: CliRunner, tmp_path: Path, mocker):
-    mocker.patch("adr_agent.cli._FIRST_RUN_MARKER", tmp_path / ".marker")
+    mocker.patch("lex_align.cli._FIRST_RUN_MARKER", tmp_path / ".marker")
     with runner.isolated_filesystem(temp_dir=tmp_path) as td:
         Path(td, "pyproject.toml").write_text(
             '[project]\ndependencies = ["fastapi>=0.100"]\n'
         )
         runner.invoke(main, ["init", "--yes"])
         runner.invoke(main, ["init", "--yes"])
-        store = DecisionStore(Path(td, ".adr-agent", "decisions"))
+        store = DecisionStore(Path(td, ".lex-align", "decisions"))
         assert len(store.load_all()) == 1  # Not doubled
 
 
@@ -90,7 +90,7 @@ def test_show_displays_decision(
 ):
     store.save(sample_decision)
     with runner.isolated_filesystem(temp_dir=initialized_project) as td:
-        (Path(td) / ".adr-agent").symlink_to(initialized_project / ".adr-agent")
+        (Path(td) / ".lex-align").symlink_to(initialized_project / ".lex-align")
         result = runner.invoke(main, ["show", "ADR-0001"], catch_exceptions=False)
 
     # Run directly using the store path
@@ -102,7 +102,7 @@ def test_show_displays_decision(
 
 
 def test_show_not_found(runner: CliRunner, initialized_project: Path, mocker):
-    mocker.patch("adr_agent.cli._find_project_root", return_value=initialized_project)
+    mocker.patch("lex_align.cli._find_project_root", return_value=initialized_project)
     result = runner.invoke(main, ["show", "ADR-9999"])
     assert result.exit_code != 0
     assert "not found" in result.output.lower()
@@ -111,7 +111,7 @@ def test_show_not_found(runner: CliRunner, initialized_project: Path, mocker):
 def test_show_observed_entry_includes_promote_hint(
     runner: CliRunner, initialized_project: Path, store: DecisionStore, mocker
 ):
-    mocker.patch("adr_agent.cli._find_project_root", return_value=initialized_project)
+    mocker.patch("lex_align.cli._find_project_root", return_value=initialized_project)
     d = Decision(
         id="ADR-0001",
         title="Uses redis",
@@ -132,7 +132,7 @@ def test_show_observed_entry_includes_promote_hint(
 def test_plan_returns_relevant_decisions(
     runner: CliRunner, initialized_project: Path, store: DecisionStore, mocker
 ):
-    mocker.patch("adr_agent.cli._find_project_root", return_value=initialized_project)
+    mocker.patch("lex_align.cli._find_project_root", return_value=initialized_project)
     d = Decision(
         id="ADR-0001",
         title="Use Redis for caching",
@@ -151,7 +151,7 @@ def test_plan_returns_relevant_decisions(
 def test_plan_includes_observed_entries(
     runner: CliRunner, initialized_project: Path, store: DecisionStore, mocker
 ):
-    mocker.patch("adr_agent.cli._find_project_root", return_value=initialized_project)
+    mocker.patch("lex_align.cli._find_project_root", return_value=initialized_project)
     d = Decision(
         id="ADR-0001",
         title="Uses redis",
@@ -171,8 +171,8 @@ def test_plan_includes_observed_entries(
 def test_plan_includes_considered_alternatives(
     runner: CliRunner, initialized_project: Path, store: DecisionStore, mocker
 ):
-    mocker.patch("adr_agent.cli._find_project_root", return_value=initialized_project)
-    from adr_agent.models import Alternative, Outcome, Reversible
+    mocker.patch("lex_align.cli._find_project_root", return_value=initialized_project)
+    from lex_align.models import Alternative, Outcome, Reversible
     d = Decision(
         id="ADR-0001",
         title="Use Postgres for jobs",
@@ -192,7 +192,7 @@ def test_plan_includes_considered_alternatives(
 def test_plan_no_matches(
     runner: CliRunner, initialized_project: Path, mocker
 ):
-    mocker.patch("adr_agent.cli._find_project_root", return_value=initialized_project)
+    mocker.patch("lex_align.cli._find_project_root", return_value=initialized_project)
     result = runner.invoke(main, ["plan", "xyzzy unknownthing"])
     assert result.exit_code == 0
     assert "No relevant decisions" in result.output
@@ -201,9 +201,9 @@ def test_plan_no_matches(
 def test_plan_logs_voluntary(
     runner: CliRunner, initialized_project: Path, store: DecisionStore, mocker
 ):
-    mocker.patch("adr_agent.cli._find_project_root", return_value=initialized_project)
-    sessions_dir = initialized_project / ".adr-agent" / "sessions"
-    from adr_agent.session import set_current_session_id, EventLogger
+    mocker.patch("lex_align.cli._find_project_root", return_value=initialized_project)
+    sessions_dir = initialized_project / ".lex-align" / "sessions"
+    from lex_align.session import set_current_session_id, EventLogger
     set_current_session_id(sessions_dir, "sess-test")
     store.save(Decision(
         id="ADR-0001",
@@ -226,7 +226,7 @@ def test_plan_logs_voluntary(
 def test_rebuild_index_command(
     runner: CliRunner, initialized_project: Path, store: DecisionStore, mocker
 ):
-    mocker.patch("adr_agent.cli._find_project_root", return_value=initialized_project)
+    mocker.patch("lex_align.cli._find_project_root", return_value=initialized_project)
     store.save(Decision(
         id="ADR-0001",
         title="Use Redis",
@@ -256,7 +256,7 @@ def test_first_run_audit_command(runner: CliRunner):
 def test_history_by_tag(
     runner: CliRunner, initialized_project: Path, store: DecisionStore, mocker
 ):
-    mocker.patch("adr_agent.cli._find_project_root", return_value=initialized_project)
+    mocker.patch("lex_align.cli._find_project_root", return_value=initialized_project)
     d = Decision(
         id="ADR-0001",
         title="Use Redis",
@@ -274,7 +274,7 @@ def test_history_by_tag(
 def test_history_not_found(
     runner: CliRunner, initialized_project: Path, mocker
 ):
-    mocker.patch("adr_agent.cli._find_project_root", return_value=initialized_project)
+    mocker.patch("lex_align.cli._find_project_root", return_value=initialized_project)
     result = runner.invoke(main, ["history", "notag"])
     assert "No decisions" in result.output
 
@@ -284,7 +284,7 @@ def test_history_not_found(
 def test_check_constraint(
     runner: CliRunner, initialized_project: Path, store: DecisionStore, mocker
 ):
-    mocker.patch("adr_agent.cli._find_project_root", return_value=initialized_project)
+    mocker.patch("lex_align.cli._find_project_root", return_value=initialized_project)
     d = Decision(
         id="ADR-0001",
         title="Use Redis",
@@ -305,7 +305,7 @@ def test_check_constraint(
 def test_propose_creates_decision(
     runner: CliRunner, initialized_project: Path, mock_llm, mocker
 ):
-    mocker.patch("adr_agent.cli._find_project_root", return_value=initialized_project)
+    mocker.patch("lex_align.cli._find_project_root", return_value=initialized_project)
     input_text = (
         "Use Redis for caching\n"   # title
         "We need fast cache access\n"  # rationale
@@ -320,7 +320,7 @@ def test_propose_creates_decision(
     assert result.exit_code == 0, result.output
     assert "Written" in result.output
 
-    store = DecisionStore(initialized_project / ".adr-agent" / "decisions")
+    store = DecisionStore(initialized_project / ".lex-align" / "decisions")
     decisions = store.load_all()
     assert len(decisions) == 1
     assert decisions[0].status == Status.ACCEPTED
@@ -330,7 +330,7 @@ def test_propose_creates_decision(
 def test_propose_calls_llm(
     runner: CliRunner, initialized_project: Path, mock_llm, mocker
 ):
-    mocker.patch("adr_agent.cli._find_project_root", return_value=initialized_project)
+    mocker.patch("lex_align.cli._find_project_root", return_value=initialized_project)
     input_text = "Use FastAPI\nAsync web framework\nmedium\napi\n\n\n\nn\n"
     runner.invoke(main, ["propose"], input=input_text)
     mock_llm.generate_adr_body.assert_called_once()
@@ -339,7 +339,7 @@ def test_propose_calls_llm(
 def test_propose_with_alternatives(
     runner: CliRunner, initialized_project: Path, mock_llm, mocker
 ):
-    mocker.patch("adr_agent.cli._find_project_root", return_value=initialized_project)
+    mocker.patch("lex_align.cli._find_project_root", return_value=initialized_project)
     input_text = (
         "Use Redis\n"
         "We need fast cache\n"
@@ -359,7 +359,7 @@ def test_propose_with_alternatives(
     result = runner.invoke(main, ["propose"], input=input_text)
     assert result.exit_code == 0, result.output
 
-    store = DecisionStore(initialized_project / ".adr-agent" / "decisions")
+    store = DecisionStore(initialized_project / ".lex-align" / "decisions")
     d = store.load_all()[0]
     assert len(d.alternatives) == 1
     assert d.alternatives[0].name == "Memcached"
@@ -368,7 +368,7 @@ def test_propose_with_alternatives(
 def test_propose_updates_superseded_decision(
     runner: CliRunner, initialized_project: Path, mock_llm, store: DecisionStore, mocker
 ):
-    mocker.patch("adr_agent.cli._find_project_root", return_value=initialized_project)
+    mocker.patch("lex_align.cli._find_project_root", return_value=initialized_project)
     old = Decision(
         id="ADR-0001",
         title="Use Postgres sessions",
@@ -402,7 +402,7 @@ def test_propose_updates_superseded_decision(
 def test_propose_with_dependency_prefill(
     runner: CliRunner, initialized_project: Path, mock_llm, mocker
 ):
-    mocker.patch("adr_agent.cli._find_project_root", return_value=initialized_project)
+    mocker.patch("lex_align.cli._find_project_root", return_value=initialized_project)
     input_text = (
         "\n"         # accept default title "Add redis"
         "Fast cache\n"
@@ -422,7 +422,7 @@ def test_propose_with_dependency_prefill(
 def test_promote_converts_observed(
     runner: CliRunner, initialized_project: Path, store: DecisionStore, mock_llm, mocker
 ):
-    mocker.patch("adr_agent.cli._find_project_root", return_value=initialized_project)
+    mocker.patch("lex_align.cli._find_project_root", return_value=initialized_project)
     d = Decision(
         id="ADR-0001",
         title="Uses redis",
@@ -453,7 +453,7 @@ def test_promote_converts_observed(
 def test_promote_calls_llm(
     runner: CliRunner, initialized_project: Path, store: DecisionStore, mock_llm, mocker
 ):
-    mocker.patch("adr_agent.cli._find_project_root", return_value=initialized_project)
+    mocker.patch("lex_align.cli._find_project_root", return_value=initialized_project)
     d = Decision(
         id="ADR-0001",
         title="Uses redis",
@@ -472,7 +472,7 @@ def test_promote_calls_llm(
 def test_promote_nonexistent(
     runner: CliRunner, initialized_project: Path, mock_llm, mocker
 ):
-    mocker.patch("adr_agent.cli._find_project_root", return_value=initialized_project)
+    mocker.patch("lex_align.cli._find_project_root", return_value=initialized_project)
     result = runner.invoke(main, ["promote", "ADR-9999"], input="context\nmedium\n\n\n\nn\n")
     assert result.exit_code != 0
     assert "not found" in result.output.lower()
@@ -481,7 +481,7 @@ def test_promote_nonexistent(
 def test_promote_already_accepted(
     runner: CliRunner, initialized_project: Path, store: DecisionStore, mock_llm, mocker
 ):
-    mocker.patch("adr_agent.cli._find_project_root", return_value=initialized_project)
+    mocker.patch("lex_align.cli._find_project_root", return_value=initialized_project)
     store.save(
         Decision(
             id="ADR-0001",
@@ -500,7 +500,7 @@ def test_promote_already_accepted(
 def test_promote_with_context_option(
     runner: CliRunner, initialized_project: Path, store: DecisionStore, mock_llm, mocker
 ):
-    mocker.patch("adr_agent.cli._find_project_root", return_value=initialized_project)
+    mocker.patch("lex_align.cli._find_project_root", return_value=initialized_project)
     d = Decision(
         id="ADR-0001",
         title="Uses redis",
@@ -524,7 +524,7 @@ def test_promote_with_context_option(
 def test_propose_yes_creates_decision(
     runner: CliRunner, initialized_project: Path, mock_llm, mocker
 ):
-    mocker.patch("adr_agent.cli._find_project_root", return_value=initialized_project)
+    mocker.patch("lex_align.cli._find_project_root", return_value=initialized_project)
     result = runner.invoke(main, [
         "propose", "--yes",
         "--title", "Use Redis for caching",
@@ -536,7 +536,7 @@ def test_propose_yes_creates_decision(
     ])
     assert result.exit_code == 0, result.output
     assert "Written" in result.output
-    store = DecisionStore(initialized_project / ".adr-agent" / "decisions")
+    store = DecisionStore(initialized_project / ".lex-align" / "decisions")
     decisions = store.load_all()
     assert len(decisions) == 1
     d = decisions[0]
@@ -552,7 +552,7 @@ def test_propose_yes_creates_decision(
 def test_propose_yes_requires_title(
     runner: CliRunner, initialized_project: Path, mock_llm, mocker
 ):
-    mocker.patch("adr_agent.cli._find_project_root", return_value=initialized_project)
+    mocker.patch("lex_align.cli._find_project_root", return_value=initialized_project)
     result = runner.invoke(main, ["propose", "--yes", "--rationale", "some reason"])
     assert result.exit_code != 0
     assert "--title" in result.output
@@ -561,7 +561,7 @@ def test_propose_yes_requires_title(
 def test_propose_yes_requires_rationale(
     runner: CliRunner, initialized_project: Path, mock_llm, mocker
 ):
-    mocker.patch("adr_agent.cli._find_project_root", return_value=initialized_project)
+    mocker.patch("lex_align.cli._find_project_root", return_value=initialized_project)
     result = runner.invoke(main, ["propose", "--yes", "--title", "Use X"])
     assert result.exit_code != 0
     assert "--rationale" in result.output
@@ -570,7 +570,7 @@ def test_propose_yes_requires_rationale(
 def test_propose_yes_with_alternatives_json(
     runner: CliRunner, initialized_project: Path, mock_llm, mocker
 ):
-    mocker.patch("adr_agent.cli._find_project_root", return_value=initialized_project)
+    mocker.patch("lex_align.cli._find_project_root", return_value=initialized_project)
     alts = json.dumps([
         {"name": "Memcached", "outcome": "not-chosen", "reason": "Less features", "reversible": "cheap", "constraint": None}
     ])
@@ -581,7 +581,7 @@ def test_propose_yes_with_alternatives_json(
         "--alternatives-json", alts,
     ])
     assert result.exit_code == 0, result.output
-    store = DecisionStore(initialized_project / ".adr-agent" / "decisions")
+    store = DecisionStore(initialized_project / ".lex-align" / "decisions")
     d = store.load_all()[0]
     assert len(d.alternatives) == 1
     assert d.alternatives[0].name == "Memcached"
@@ -590,7 +590,7 @@ def test_propose_yes_with_alternatives_json(
 def test_propose_yes_supersedes(
     runner: CliRunner, initialized_project: Path, mock_llm, store: DecisionStore, mocker
 ):
-    mocker.patch("adr_agent.cli._find_project_root", return_value=initialized_project)
+    mocker.patch("lex_align.cli._find_project_root", return_value=initialized_project)
     old = Decision(
         id="ADR-0001",
         title="Use Postgres sessions",
@@ -614,7 +614,7 @@ def test_propose_yes_supersedes(
 def test_propose_yes_invalid_alternatives_json(
     runner: CliRunner, initialized_project: Path, mock_llm, mocker
 ):
-    mocker.patch("adr_agent.cli._find_project_root", return_value=initialized_project)
+    mocker.patch("lex_align.cli._find_project_root", return_value=initialized_project)
     result = runner.invoke(main, [
         "propose", "--yes",
         "--title", "Use X",
@@ -630,7 +630,7 @@ def test_propose_yes_invalid_alternatives_json(
 def test_promote_yes_converts_observed(
     runner: CliRunner, initialized_project: Path, store: DecisionStore, mock_llm, mocker
 ):
-    mocker.patch("adr_agent.cli._find_project_root", return_value=initialized_project)
+    mocker.patch("lex_align.cli._find_project_root", return_value=initialized_project)
     store.save(Decision(
         id="ADR-0001",
         title="Uses redis",
@@ -659,7 +659,7 @@ def test_promote_yes_converts_observed(
 def test_promote_yes_requires_context(
     runner: CliRunner, initialized_project: Path, store: DecisionStore, mock_llm, mocker
 ):
-    mocker.patch("adr_agent.cli._find_project_root", return_value=initialized_project)
+    mocker.patch("lex_align.cli._find_project_root", return_value=initialized_project)
     store.save(Decision(
         id="ADR-0001",
         title="Uses redis",
@@ -677,7 +677,7 @@ def test_promote_yes_requires_context(
 def test_promote_yes_with_alternatives_json(
     runner: CliRunner, initialized_project: Path, store: DecisionStore, mock_llm, mocker
 ):
-    mocker.patch("adr_agent.cli._find_project_root", return_value=initialized_project)
+    mocker.patch("lex_align.cli._find_project_root", return_value=initialized_project)
     store.save(Decision(
         id="ADR-0001",
         title="Uses redis",
@@ -704,7 +704,7 @@ def test_promote_yes_with_alternatives_json(
 def test_promote_yes_invalid_alternatives_json(
     runner: CliRunner, initialized_project: Path, store: DecisionStore, mock_llm, mocker
 ):
-    mocker.patch("adr_agent.cli._find_project_root", return_value=initialized_project)
+    mocker.patch("lex_align.cli._find_project_root", return_value=initialized_project)
     store.save(Decision(
         id="ADR-0001",
         title="Uses redis",
@@ -726,16 +726,16 @@ def test_promote_yes_invalid_alternatives_json(
 # ── doctor ────────────────────────────────────────────────────────────────────
 
 def test_doctor_healthy(runner: CliRunner, initialized_project: Path, mocker):
-    mocker.patch("adr_agent.cli._find_project_root", return_value=initialized_project)
-    from adr_agent.settings import add_adr_hooks
-    add_adr_hooks(initialized_project)
+    mocker.patch("lex_align.cli._find_project_root", return_value=initialized_project)
+    from lex_align.settings import add_lex_hooks
+    add_lex_hooks(initialized_project)
     result = runner.invoke(main, ["doctor"])
     assert result.exit_code == 0
     assert "healthy" in result.output.lower()
 
 
 def test_doctor_repair(runner: CliRunner, initialized_project: Path, mocker):
-    mocker.patch("adr_agent.cli._find_project_root", return_value=initialized_project)
+    mocker.patch("lex_align.cli._find_project_root", return_value=initialized_project)
     result = runner.invoke(main, ["doctor", "--repair"])
     assert result.exit_code == 0
     assert "Repaired" in result.output or "healthy" in result.output.lower()
@@ -744,9 +744,9 @@ def test_doctor_repair(runner: CliRunner, initialized_project: Path, mocker):
 # ── uninstall ─────────────────────────────────────────────────────────────────
 
 def test_uninstall_removes_hooks(runner: CliRunner, initialized_project: Path, mocker):
-    mocker.patch("adr_agent.cli._find_project_root", return_value=initialized_project)
-    from adr_agent.settings import add_adr_hooks, check_hooks_present
-    add_adr_hooks(initialized_project)
+    mocker.patch("lex_align.cli._find_project_root", return_value=initialized_project)
+    from lex_align.settings import add_lex_hooks, check_hooks_present
+    add_lex_hooks(initialized_project)
     result = runner.invoke(main, ["uninstall", "--yes"])
     assert result.exit_code == 0
     status = check_hooks_present(initialized_project)
@@ -765,7 +765,7 @@ def test_privacy_displays_notice(runner: CliRunner):
 # ── report ────────────────────────────────────────────────────────────────────
 
 def test_report_command(runner: CliRunner, initialized_project: Path, mocker):
-    mocker.patch("adr_agent.cli._find_project_root", return_value=initialized_project)
+    mocker.patch("lex_align.cli._find_project_root", return_value=initialized_project)
     result = runner.invoke(main, ["report"])
     assert result.exit_code == 0
     assert "Retrieval" in result.output
@@ -773,6 +773,6 @@ def test_report_command(runner: CliRunner, initialized_project: Path, mocker):
 
 
 def test_report_with_since(runner: CliRunner, initialized_project: Path, mocker):
-    mocker.patch("adr_agent.cli._find_project_root", return_value=initialized_project)
+    mocker.patch("lex_align.cli._find_project_root", return_value=initialized_project)
     result = runner.invoke(main, ["report", "--since", "2 weeks ago"])
     assert result.exit_code == 0

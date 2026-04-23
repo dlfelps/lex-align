@@ -5,7 +5,7 @@ import datetime
 
 import pytest
 
-from adr_agent.models import (
+from lex_align.models import (
     Alternative,
     Confidence,
     Decision,

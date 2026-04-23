@@ -3,8 +3,8 @@ from __future__ import annotations
 
 import pytest
 
-from adr_agent.models import ObservedVia, Status
-from adr_agent.reconciler import (
+from lex_align.models import ObservedVia, Status
+from lex_align.reconciler import (
     _normalize_name,
     apply_edit,
     diff_deps,
@@ -12,7 +12,7 @@ from adr_agent.reconciler import (
     get_runtime_deps,
     reconcile,
 )
-from adr_agent.store import DecisionStore
+from lex_align.store import DecisionStore
 
 
 def test_get_runtime_deps(pyproject_toml):

@@ -5,7 +5,7 @@ import datetime
 
 import pytest
 
-from adr_agent.models import (
+from lex_align.models import (
     Alternative,
     Confidence,
     Decision,
@@ -15,7 +15,7 @@ from adr_agent.models import (
     Scope,
     Status,
 )
-from adr_agent.store import DecisionStore, create_observed, tokenize
+from lex_align.store import DecisionStore, create_observed, tokenize
 
 
 def test_save_and_load(store: DecisionStore, sample_decision: Decision):

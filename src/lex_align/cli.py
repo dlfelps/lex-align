@@ -8,37 +8,36 @@ from typing import Optional
 
 import click
 
-from . import llm as llm_module
 from .hooks import run_hook
 from .models import Alternative, Confidence, Outcome, Reversible, Scope, Status
 from .reconciler import get_runtime_deps, reconcile
 from .report import generate_report
 from .session import EventLogger, SessionState, get_current_session_id
-from .settings import add_adr_hooks, check_hooks_present, detect_adr_command, remove_adr_hooks
+from .settings import add_lex_hooks, check_hooks_present, detect_lex_command, remove_lex_hooks
 from .store import DecisionStore, STOP_WORDS, create_observed, tokenize
 
 
 def _find_project_root() -> Path:
     path = Path.cwd()
     for parent in [path] + list(path.parents):
-        if (parent / ".adr-agent").exists():
+        if (parent / ".lex-align").exists():
             return parent
     return path
 
 
 def _require_initialized(project_root: Path) -> None:
-    if not (project_root / ".adr-agent").exists():
+    if not (project_root / ".lex-align").exists():
         raise click.ClickException(
-            "adr-agent is not initialized in this repository. Run `adr-agent init` first."
+            "lex-align is not initialized in this repository. Run `lex-align init` first."
         )
 
 
 def _make_store(project_root: Path) -> DecisionStore:
-    return DecisionStore(project_root / ".adr-agent" / "decisions")
+    return DecisionStore(project_root / ".lex-align" / "decisions")
 
 
 def _sessions_dir(project_root: Path) -> Path:
-    return project_root / ".adr-agent" / "sessions"
+    return project_root / ".lex-align" / "sessions"
 
 
 def _get_logger(project_root: Path) -> Optional[EventLogger]:
@@ -73,7 +72,7 @@ def _first_sentence(text: str) -> str:
 
 
 _PRIVACY_NOTICE = """\
-adr-agent records architectural decisions for use by AI agents.
+lex-align records architectural decisions for use by AI agents.
 
 Before initializing, please note:
 
@@ -82,23 +81,23 @@ Before initializing, please note:
    will be visible to everyone with repo access. Treat them with the same
    sensitivity as source code.
 
-2. Session logs are stored locally under .adr-agent/sessions/ and
+2. Session logs are stored locally under .lex-align/sessions/ and
    are gitignored by default. They contain command metadata, not
    decision content.
 
-3. adr-agent does not transmit any data externally. No telemetry,
+3. lex-align does not transmit any data externally. No telemetry,
    no central collection.
 
 4. The aggregate pattern of decisions can reveal information even
    when individual decisions are innocuous.
 """
 
-_CLAUDE_MD_MARKER = "## adr-agent"
+_CLAUDE_MD_MARKER = "## lex-align"
 
 
-def _claude_md_section(command: str = "adr-agent") -> str:
+def _claude_md_section(command: str = "lex-align") -> str:
     return f"""\
-## adr-agent
+## lex-align
 
 Before starting any non-trivial task, run:
   {command} plan "<task description>"
@@ -125,9 +124,9 @@ the required flags, then pass `--yes` to skip all confirmation prompts.
 """
 
 
-def _first_run_audit_prompt(command: str = "adr-agent") -> str:
+def _first_run_audit_prompt(command: str = "lex-align") -> str:
     return f"""\
-"I have just initialized adr-agent in this repository. Review the list
+"I have just initialized lex-align in this repository. Review the list
 of **OBSERVED** dependencies provided in the architecture brief.
 
 For each central dependency (e.g., the web framework, database client,
@@ -145,12 +144,12 @@ If you cannot find evidence for why a dependency was chosen, leave it as
 'Observed' to maintain store integrity."
 """
 
-_FIRST_RUN_MARKER = Path.home() / ".adr-agent-initialized"
+_FIRST_RUN_MARKER = Path.home() / ".lex-align-initialized"
 
 
 @click.group()
 def main() -> None:
-    """adr-agent — per-repository architectural memory for AI agents."""
+    """lex-align — enterprise legal and architectural alignment for AI coding agents."""
 
 
 # ── init ──────────────────────────────────────────────────────────────────────
@@ -158,7 +157,7 @@ def main() -> None:
 @main.command()
 @click.option("--yes", "-y", is_flag=True, help="Skip privacy confirmation prompt.")
 def init(yes: bool) -> None:
-    """Initialize adr-agent in the current repository."""
+    """Initialize lex-align in the current repository."""
     project_root = Path.cwd()
 
     # Privacy notice on first run
@@ -171,14 +170,14 @@ def init(yes: bool) -> None:
         _FIRST_RUN_MARKER.parent.mkdir(parents=True, exist_ok=True)
         _FIRST_RUN_MARKER.touch()
 
-    adr_dir = project_root / ".adr-agent"
+    adr_dir = project_root / ".lex-align"
     adr_dir.mkdir(exist_ok=True)
     (adr_dir / "decisions").mkdir(exist_ok=True)
     (adr_dir / "sessions").mkdir(exist_ok=True)
 
     # Gitignore sessions/
     gitignore = project_root / ".gitignore"
-    gitignore_entry = ".adr-agent/sessions/"
+    gitignore_entry = ".lex-align/sessions/"
     if gitignore.exists():
         content = gitignore.read_text()
         if gitignore_entry not in content:
@@ -195,40 +194,40 @@ def init(yes: bool) -> None:
         seeded = reconcile(pyproject, store, observed_via=ObservedVia.SEED)
 
     # Configure hooks
-    add_adr_hooks(project_root)
+    add_lex_hooks(project_root)
 
     # CLAUDE.md — agent behavioral rules
-    command = detect_adr_command(project_root)
+    command = detect_lex_command(project_root)
     section = _claude_md_section(command)
     claude_md = project_root / "CLAUDE.md"
     if not claude_md.exists():
         claude_md.write_text(section)
-        claude_md_msg = "Created CLAUDE.md with adr-agent behavioral rules."
+        claude_md_msg = "Created CLAUDE.md with lex-align behavioral rules."
     elif _CLAUDE_MD_MARKER not in claude_md.read_text():
-        if yes or click.confirm("CLAUDE.md already exists. Append adr-agent section?", default=True):
+        if yes or click.confirm("CLAUDE.md already exists. Append lex-align section?", default=True):
             existing = claude_md.read_text()
             claude_md.write_text(existing.rstrip() + "\n\n" + section)
-            claude_md_msg = "Appended adr-agent section to CLAUDE.md."
+            claude_md_msg = "Appended lex-align section to CLAUDE.md."
         else:
             claude_md_msg = "Skipped CLAUDE.md (no changes made)."
     else:
-        claude_md_msg = "CLAUDE.md already contains adr-agent section (skipped)."
+        claude_md_msg = "CLAUDE.md already contains lex-align section (skipped)."
 
-    click.echo("Initialized adr-agent.")
+    click.echo("Initialized lex-align.")
     if seeded:
         click.echo(f"Seeded {len(seeded)} observed entr{'y' if len(seeded)==1 else 'ies'} from pyproject.toml:")
         for pkg in seeded:
             click.echo(f"  {pkg}")
         n = len(seeded)
         click.echo(
-            f"\nadr-agent has seeded {n} observed {'entry' if n == 1 else 'entries'} "
+            f"\nlex-align has seeded {n} observed {'entry' if n == 1 else 'entries'} "
             "from your existing dependencies.\n"
             "These entries reflect what the codebase uses but contain no rationale.\n\n"
             "To backfill rationale for existing dependencies, ask your AI agent to\n"
             "run the First-Run Audit:\n"
         )
-        click.echo(_first_run_audit_prompt(detect_adr_command(project_root)))
-        click.echo("(You can display this prompt again with `adr-agent first-run-audit`.)")
+        click.echo(_first_run_audit_prompt(detect_lex_command(project_root)))
+        click.echo("(You can display this prompt again with `lex-align first-run-audit`.)")
     click.echo("Hooks configured in .claude/settings.json.")
     click.echo(claude_md_msg)
 
@@ -284,7 +283,7 @@ def show(adr_id: str) -> None:
 
     if decision.status == Status.OBSERVED:
         click.echo(
-            f"\n[Observed entry] Run `adr-agent promote {decision.id}` to capture rationale if you have context."
+            f"\n[Observed entry] Run `lex-align promote {decision.id}` to capture rationale if you have context."
         )
 
 
@@ -305,13 +304,13 @@ def plan(prompt: str) -> None:
     terms = tokenize(prompt) - STOP_WORDS
     if not terms:
         click.echo("No meaningful terms found in prompt.")
-        click.echo("Run `adr-agent propose` when ready to record a decision.")
+        click.echo("Run `lex-align propose` when ready to record a decision.")
         return
 
     candidates = store.search_by_terms(terms)
     if not candidates:
         click.echo("No relevant decisions found for this task.")
-        click.echo("Run `adr-agent propose` when ready to record a decision.")
+        click.echo("Run `lex-align propose` when ready to record a decision.")
         return
 
     accepted = [d for d in candidates if d.status == Status.ACCEPTED]
@@ -386,8 +385,8 @@ def plan(prompt: str) -> None:
 
     if lines:
         lines.append("")
-    lines.append("Run `adr-agent show <id>` for full rationale on any entry above.")
-    lines.append("Run `adr-agent propose` when you are ready to record your decision.")
+    lines.append("Run `lex-align show <id>` for full rationale on any entry above.")
+    lines.append("Run `lex-align propose` when you are ready to record your decision.")
 
     click.echo("\n".join(lines))
 
@@ -746,16 +745,9 @@ def promote(
                 if not click.confirm("Add another alternative?", default=False):
                     break
 
-    # Generate prose body — use supplied prose directly if all three sections provided
-    if context_text is not None and decision_prose is not None and consequences_prose is not None:
-        new_context, new_decision, new_consequences = context_text, decision_prose, consequences_prose
-    else:
-        client = llm_module.get_client()
-        new_context, new_decision, new_consequences = client.generate_promotion_body(
-            title=decision.title,
-            context_provided=context_text,
-            existing_context=decision.context_text,
-        )
+    new_context = context_text or decision.context_text or ""
+    new_decision = decision_prose or decision.decision_text or ""
+    new_consequences = consequences_prose or decision.consequences_text or ""
 
     decision.status = Status.ACCEPTED
     decision.confidence = confidence
@@ -797,7 +789,7 @@ def rebuild_index() -> None:
 @main.command()
 @click.option("--since", default=None, help="Filter events since this time (e.g. '2 weeks ago').")
 def report(since: Optional[str]) -> None:
-    """Display a summary of adr-agent activity and store integrity."""
+    """Display a summary of lex-align activity and store integrity."""
     project_root = _find_project_root()
     _require_initialized(project_root)
     store = _make_store(project_root)
@@ -826,10 +818,10 @@ def doctor(repair: bool) -> None:
     else:
         click.echo("Some hooks are missing or misconfigured.")
         if repair:
-            add_adr_hooks(project_root)
+            add_lex_hooks(project_root)
             click.echo("Repaired hook configuration.")
         else:
-            click.echo("Run `adr-agent doctor --repair` to fix.")
+            click.echo("Run `lex-align doctor --repair` to fix.")
 
 
 # ── uninstall ─────────────────────────────────────────────────────────────────
@@ -837,18 +829,18 @@ def doctor(repair: bool) -> None:
 @main.command()
 @click.option("--yes", "-y", is_flag=True)
 def uninstall(yes: bool) -> None:
-    """Remove adr-agent hook configuration from .claude/settings.json."""
+    """Remove lex-align hook configuration from .claude/settings.json."""
     project_root = _find_project_root()
     _require_initialized(project_root)
 
     if not yes:
-        if not click.confirm("Remove adr-agent hooks from .claude/settings.json?", default=False):
+        if not click.confirm("Remove lex-align hooks from .claude/settings.json?", default=False):
             click.echo("Aborted.")
             return
 
-    remove_adr_hooks(project_root)
-    click.echo("adr-agent hooks removed from .claude/settings.json.")
-    click.echo("The .adr-agent/ directory and decision files are preserved.")
+    remove_lex_hooks(project_root)
+    click.echo("lex-align hooks removed from .claude/settings.json.")
+    click.echo("The .lex-align/ directory and decision files are preserved.")
 
 
 # ── privacy ───────────────────────────────────────────────────────────────────
@@ -865,7 +857,7 @@ def privacy() -> None:
 def first_run_audit() -> None:
     """Display the First-Run Audit prompt for backfilling observed entries."""
     project_root = _find_project_root()
-    click.echo(_first_run_audit_prompt(detect_adr_command(project_root)))
+    click.echo(_first_run_audit_prompt(detect_lex_command(project_root)))
 
 
 # ── hook subcommands ──────────────────────────────────────────────────────────

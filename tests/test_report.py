@@ -7,10 +7,10 @@ from pathlib import Path
 
 import pytest
 
-from adr_agent.models import Confidence, Decision, ObservedVia, Scope, Status
-from adr_agent.report import generate_report, load_events, parse_since
-from adr_agent.session import EventLogger
-from adr_agent.store import DecisionStore
+from lex_align.models import Confidence, Decision, ObservedVia, Scope, Status
+from lex_align.report import generate_report, load_events, parse_since
+from lex_align.session import EventLogger
+from lex_align.store import DecisionStore
 
 
 @pytest.fixture

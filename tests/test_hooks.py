@@ -6,34 +6,34 @@ from pathlib import Path
 
 import pytest
 
-from adr_agent.hooks import (
+from lex_align.hooks import (
     _extract_imports,
     handle_post_tool_use,
     handle_pre_tool_use,
     handle_session_end,
     handle_session_start,
 )
-from adr_agent.models import (
+from lex_align.models import (
     Confidence,
     Decision,
     ObservedVia,
     Scope,
     Status,
 )
-from adr_agent.session import SessionState, set_current_session_id
-from adr_agent.store import DecisionStore
+from lex_align.session import SessionState, set_current_session_id
+from lex_align.store import DecisionStore
 
 
 @pytest.fixture
 def project_root(tmp_path: Path) -> Path:
-    (tmp_path / ".adr-agent" / "decisions").mkdir(parents=True)
-    (tmp_path / ".adr-agent" / "sessions").mkdir(parents=True)
+    (tmp_path / ".lex-align" / "decisions").mkdir(parents=True)
+    (tmp_path / ".lex-align" / "sessions").mkdir(parents=True)
     return tmp_path
 
 
 @pytest.fixture
 def store(project_root: Path) -> DecisionStore:
-    return DecisionStore(project_root / ".adr-agent" / "decisions")
+    return DecisionStore(project_root / ".lex-align" / "decisions")
 
 
 def test_session_start_generates_brief(project_root: Path, store: DecisionStore, sample_decision):
@@ -57,15 +57,15 @@ def test_session_start_runs_reconciliation(project_root: Path):
 def test_session_start_sets_current_session(project_root: Path):
     event = {"session_id": "sess-abc"}
     handle_session_start(event, project_root)
-    from adr_agent.session import get_current_session_id
-    sid = get_current_session_id(project_root / ".adr-agent" / "sessions")
+    from lex_align.session import get_current_session_id
+    sid = get_current_session_id(project_root / ".lex-align" / "sessions")
     assert sid == "sess-abc"
 
 
 def test_brief_contains_plan_hint(project_root: Path):
     event = {"session_id": "sess-001"}
     output = handle_session_start(event, project_root)
-    assert 'adr-agent plan' in output
+    assert 'lex-align plan' in output
     assert 'considered' not in output
 
 
@@ -111,7 +111,7 @@ def test_pre_tool_use_pyproject_dep_added(project_root: Path, store: DecisionSto
     output = handle_pre_tool_use(event, project_root)
     assert output is not None
     assert "redis" in output
-    assert "adr-agent propose" in output
+    assert "lex-align propose" in output
 
 
 def test_pre_tool_use_pyproject_no_change(project_root: Path):
@@ -180,7 +180,7 @@ def test_pre_tool_use_python_file_observed_import(project_root: Path, store: Dec
     output = handle_pre_tool_use(event, project_root)
     assert output is not None
     assert "redis" in output
-    assert "adr-agent promote" in output
+    assert "lex-align promote" in output
 
 
 def test_pre_tool_use_observed_fires_once_per_session(project_root: Path, store: DecisionStore):
@@ -243,7 +243,7 @@ def test_post_tool_use_creates_observed(project_root: Path):
         "tool_input": {"path": "pyproject.toml"},
     }
     output = handle_post_tool_use(event, project_root)
-    store = DecisionStore(project_root / ".adr-agent" / "decisions")
+    store = DecisionStore(project_root / ".lex-align" / "decisions")
     decisions = store.load_all()
     assert len(decisions) > 0
     assert decisions[0].status == Status.OBSERVED
@@ -252,7 +252,7 @@ def test_post_tool_use_creates_observed(project_root: Path):
 def test_post_tool_use_shows_reminder_when_no_propose(project_root: Path):
     pyproject = project_root / "pyproject.toml"
     pyproject.write_text('[project]\ndependencies = ["redis>=5.0"]\n')
-    sessions_dir = project_root / ".adr-agent" / "sessions"
+    sessions_dir = project_root / ".lex-align" / "sessions"
     state = SessionState(sessions_dir, "sess-001")
     state.record_dep_change(["redis"])
 
@@ -267,7 +267,7 @@ def test_post_tool_use_shows_reminder_when_no_propose(project_root: Path):
 
 
 def test_session_end_lists_unresolved(project_root: Path):
-    sessions_dir = project_root / ".adr-agent" / "sessions"
+    sessions_dir = project_root / ".lex-align" / "sessions"
     state = SessionState(sessions_dir, "sess-001")
     state.record_dep_change(["redis", "celery"])
     set_current_session_id(sessions_dir, "sess-001")
@@ -280,7 +280,7 @@ def test_session_end_lists_unresolved(project_root: Path):
 
 
 def test_session_end_no_unresolved(project_root: Path):
-    sessions_dir = project_root / ".adr-agent" / "sessions"
+    sessions_dir = project_root / ".lex-align" / "sessions"
     set_current_session_id(sessions_dir, "sess-001")
     event = {"session_id": "sess-001"}
     output = handle_session_end(event, project_root)
@@ -288,8 +288,8 @@ def test_session_end_no_unresolved(project_root: Path):
 
 
 def test_session_end_clears_current_session(project_root: Path):
-    from adr_agent.session import get_current_session_id
-    sessions_dir = project_root / ".adr-agent" / "sessions"
+    from lex_align.session import get_current_session_id
+    sessions_dir = project_root / ".lex-align" / "sessions"
     set_current_session_id(sessions_dir, "sess-001")
     handle_session_end({"session_id": "sess-001"}, project_root)
     assert get_current_session_id(sessions_dir) is None

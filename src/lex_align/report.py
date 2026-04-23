@@ -103,7 +103,7 @@ def generate_report(sessions_dir: Path, store: DecisionStore, since_str: Optiona
     manual_count = sum(1 for d in observed if d.observed_via == ObservedVia.MANUAL)
 
     since_label = f" --since \"{since_str}\"" if since_str else ""
-    lines = [f"$ adr-agent report{since_label}"]
+    lines = [f"$ lex-align report{since_label}"]
     lines.append("")
 
     total_retrieval = sum(retrieval_counts.values())

@@ -1,4 +1,4 @@
-"""Shared fixtures for adr-agent tests."""
+"""Shared fixtures for lex-align tests."""
 from __future__ import annotations
 
 import datetime
@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from adr_agent.models import (
+from lex_align.models import (
     Alternative,
     Confidence,
     Decision,
@@ -16,20 +16,20 @@ from adr_agent.models import (
     Scope,
     Status,
 )
-from adr_agent.store import DecisionStore
+from lex_align.store import DecisionStore
 
 
 @pytest.fixture
 def tmp_project(tmp_path: Path) -> Path:
-    """A temporary project root with .adr-agent initialized."""
-    (tmp_path / ".adr-agent" / "decisions").mkdir(parents=True)
-    (tmp_path / ".adr-agent" / "sessions").mkdir(parents=True)
+    """A temporary project root with .lex-align initialized."""
+    (tmp_path / ".lex-align" / "decisions").mkdir(parents=True)
+    (tmp_path / ".lex-align" / "sessions").mkdir(parents=True)
     return tmp_path
 
 
 @pytest.fixture
 def store(tmp_project: Path) -> DecisionStore:
-    return DecisionStore(tmp_project / ".adr-agent" / "decisions")
+    return DecisionStore(tmp_project / ".lex-align" / "decisions")
 
 
 @pytest.fixture
@@ -74,7 +74,7 @@ def mock_llm(mocker):
         "Decision: adopted this library.",
         "Consequences: enables certain features.",
     )
-    mocker.patch("adr_agent.llm.get_client", return_value=client)
+    mocker.patch("lex_align.llm.get_client", return_value=client)
     return client
 
 

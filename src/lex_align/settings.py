@@ -7,11 +7,11 @@ import shutil
 import sys
 from pathlib import Path
 
-_ADR_MARKER = "adr-agent"
-_WRAPPER_SCRIPT_NAME = "adr-agent-hook.py"
+_LEX_MARKER = "lex-align"
+_WRAPPER_SCRIPT_NAME = "lex-align-hook.py"
 
 # Cross-platform hook wrapper: tries direct PATH install first, then uv run,
-# exits 0 gracefully if adr-agent is not found so collaborators without the
+# exits 0 gracefully if lex-align is not found so collaborators without the
 # tool don't see hook failures.
 _WRAPPER_SCRIPT_CONTENT = '''\
 #!/usr/bin/env python3
@@ -21,45 +21,45 @@ import sys
 from pathlib import Path
 
 
-def _adr_in_pyproject() -> bool:
-    """Return True if adr-agent appears in the project's pyproject.toml."""
+def _lex_align_in_pyproject() -> bool:
+    """Return True if lex-align appears in the project's pyproject.toml."""
     pyproject = Path(__file__).parent.parent / "pyproject.toml"
     try:
-        return "adr-agent" in pyproject.read_text()
+        return "lex-align" in pyproject.read_text()
     except OSError:
         return False
 
 
 def _install_hint(uv: bool) -> str:
-    in_pyproject = _adr_in_pyproject()
+    in_pyproject = _lex_align_in_pyproject()
     if in_pyproject and uv:
-        return "adr-agent is listed in pyproject.toml but not installed. Run: uv sync"
+        return "lex-align is listed in pyproject.toml but not installed. Run: uv sync"
     if in_pyproject:
         return (
-            "adr-agent is listed in pyproject.toml but not installed. "
+            "lex-align is listed in pyproject.toml but not installed. "
             "Activate your virtual environment or run: pip install -e ."
         )
     if uv:
-        return "adr-agent not installed. Run: uv tool install adr-agent"
-    return "adr-agent not installed. Run: pip install adr-agent"
+        return "lex-align not installed. Run: uv tool install lex-align"
+    return "lex-align not installed. Run: pip install lex-align"
 
 
 def main():
     args = sys.argv[1:]
     stdin_data = sys.stdin.buffer.read()
 
-    if shutil.which("adr-agent"):
-        sys.exit(subprocess.run(["adr-agent"] + args, input=stdin_data).returncode)
+    if shutil.which("lex-align"):
+        sys.exit(subprocess.run(["lex-align"] + args, input=stdin_data).returncode)
 
     uv = shutil.which("uv")
     if uv:
         # Capture stderr so uv\'s own "not found" error doesn\'t mix with ours.
-        r = subprocess.run(["uv", "run", "adr-agent"] + args, input=stdin_data,
+        r = subprocess.run(["uv", "run", "lex-align"] + args, input=stdin_data,
                            stderr=subprocess.PIPE)
         if r.returncode == 0:
             sys.exit(0)
 
-    print(f"[adr-agent] {_install_hint(bool(uv))}", file=sys.stderr)
+    print(f"[lex-align] {_install_hint(bool(uv))}", file=sys.stderr)
     sys.exit(0)
 
 
@@ -84,12 +84,12 @@ _HOOK_EVENTS = {
 }
 
 
-def detect_adr_command(project_root: Path) -> str:
-    """Return the shell command that will reliably invoke adr-agent from a hook."""
+def detect_lex_command(project_root: Path) -> str:
+    """Return the shell command that will reliably invoke lex-align from a hook."""
     is_windows = platform.system() == "Windows"
     scripts_dir = "Scripts" if is_windows else "bin"
     exe_suffix = ".exe" if is_windows else ""
-    script_name = f"adr-agent{exe_suffix}"
+    script_name = f"lex-align{exe_suffix}"
 
     # When running inside the project's own venv (e.g. self-development with uv),
     # prefer "uv run" so hooks don't need an absolute path into a venv.
@@ -101,7 +101,7 @@ def detect_adr_command(project_root: Path) -> str:
             and (project_root / "uv.lock").exists()
             and shutil.which("uv")
         ):
-            return "uv run adr-agent"
+            return "uv run lex-align"
 
         # Otherwise pin to the absolute script path in the active venv so hooks
         # work even when the venv is not activated in Claude's shell.
@@ -115,7 +115,7 @@ def detect_adr_command(project_root: Path) -> str:
         return str(py_script)
 
     # Assume it's on PATH (global install with PATH configured correctly).
-    return "adr-agent"
+    return "lex-align"
 
 
 def _build_hooks_config(command: str) -> dict:
@@ -160,7 +160,7 @@ def _write_wrapper_script(project_root: Path) -> None:
         pass  # Windows — chmod is a no-op anyway
 
 
-def add_adr_hooks(project_root: Path) -> None:
+def add_lex_hooks(project_root: Path) -> None:
     _write_wrapper_script(project_root)
     command = f"python .claude/{_WRAPPER_SCRIPT_NAME}"
     hooks_config = _build_hooks_config(command)
@@ -170,9 +170,9 @@ def add_adr_hooks(project_root: Path) -> None:
 
     for event, new_entries in hooks_config.items():
         existing: list = hooks.setdefault(event, [])
-        # Idempotent: skip if any adr-agent hook is already registered for this event.
+        # Idempotent: skip if any lex-align hook is already registered for this event.
         if any(
-            any(_ADR_MARKER in h.get("command", "") for h in e.get("hooks", []))
+            any(_LEX_MARKER in h.get("command", "") for h in e.get("hooks", []))
             for e in existing
         ):
             continue
@@ -182,14 +182,14 @@ def add_adr_hooks(project_root: Path) -> None:
     save_settings(settings, project_root)
 
 
-def remove_adr_hooks(project_root: Path) -> None:
+def remove_lex_hooks(project_root: Path) -> None:
     settings = load_settings(project_root)
     hooks = settings.get("hooks", {})
 
     for event in list(hooks.keys()):
         hooks[event] = [
             entry for entry in hooks[event]
-            if not any(_ADR_MARKER in h.get("command", "") for h in entry.get("hooks", []))
+            if not any(_LEX_MARKER in h.get("command", "") for h in entry.get("hooks", []))
         ]
         if not hooks[event]:
             del hooks[event]
@@ -206,7 +206,7 @@ def check_hooks_present(project_root: Path) -> dict[str, bool]:
     hooks = settings.get("hooks", {})
     return {
         event: any(
-            any(_ADR_MARKER in h.get("command", "") for h in e.get("hooks", []))
+            any(_LEX_MARKER in h.get("command", "") for h in e.get("hooks", []))
             for e in hooks.get(event, [])
         )
         for event in _HOOK_EVENTS
