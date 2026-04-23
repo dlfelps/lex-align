@@ -57,6 +57,21 @@ def diff_deps(old_content: str, new_content: str) -> tuple[set[str], set[str]]:
     return new - old, old - new
 
 
+def diff_deps_with_specs(
+    old_content: str, new_content: str
+) -> tuple[dict[str, str], set[str]]:
+    """Richer diff that preserves the raw spec for added packages.
+
+    Returns ({name: raw_spec}, {removed_names}). Used by the enforcement hook
+    so it can extract version info for version-constrained packages.
+    """
+    old = _parse_deps_with_specs(old_content)
+    new = _parse_deps_with_specs(new_content)
+    added = {name: spec for name, spec in new.items() if name not in old}
+    removed = set(old) - set(new)
+    return added, removed
+
+
 def _parse_deps_from_content(content: str) -> set[str]:
     try:
         data = tomllib.loads(content)
@@ -64,6 +79,26 @@ def _parse_deps_from_content(content: str) -> set[str]:
         return {_normalize_name(d) for d in deps}
     except Exception:
         return set()
+
+
+def _parse_deps_with_specs(content: str) -> dict[str, str]:
+    try:
+        data = tomllib.loads(content)
+        deps = data.get("project", {}).get("dependencies", [])
+        return {_normalize_name(d): d.strip() for d in deps}
+    except Exception:
+        return {}
+
+
+def extract_pinned_version(spec: str) -> Optional[str]:
+    """Pull a concrete version out of a spec like 'redis>=5.0' or 'httpx==0.28.1'.
+
+    Returns the first version literal we find. For bare names like 'redis' with
+    no constraint, returns None.
+    """
+    import re as _re
+    m = _re.search(r"(?:>=|<=|!=|~=|==|>|<)\s*([0-9][0-9a-zA-Z\.\-\+\_]*)", spec)
+    return m.group(1) if m else None
 
 
 def apply_edit(current_content: str, tool_name: str, tool_input: dict) -> str:
