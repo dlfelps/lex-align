@@ -475,6 +475,9 @@ def check_constraint(tag: str) -> None:
     ),
 )
 @click.option("--yes", "-y", is_flag=True, help="Non-interactive: skip all prompts and use provided flags or defaults.")
+@click.option("--context", "context_prose", default=None, help="ADR context prose (bypasses LLM generation).")
+@click.option("--decision", "decision_prose", default=None, help="ADR decision prose (bypasses LLM generation).")
+@click.option("--consequences", "consequences_prose", default=None, help="ADR consequences prose (bypasses LLM generation).")
 def propose(
     dependency: Optional[str],
     relevant_adrs: Optional[str],
@@ -488,6 +491,9 @@ def propose(
     supersedes: Optional[str],
     alternatives_json: Optional[str],
     yes: bool,
+    context_prose: Optional[str],
+    decision_prose: Optional[str],
+    consequences_prose: Optional[str],
 ) -> None:
     """Record a new architectural decision (non-interactive with --yes)."""
     project_root = _find_project_root()
@@ -577,16 +583,19 @@ def propose(
                 )
             )
 
-    # Generate prose body via LLM
+    # Generate prose body — use supplied prose directly if all three sections provided
     alt_summary = "; ".join(f"{a.name} ({a.outcome.value})" for a in alternatives) if alternatives else ""
-    client = llm_module.get_client()
-    context_text, decision_text, consequences_text = client.generate_adr_body(
-        title=title_val,
-        rationale=rationale_val,
-        alternatives_summary=alt_summary,
-        constraints=constraint_list,
-        supersedes=supersedes_list,
-    )
+    if context_prose is not None and decision_prose is not None and consequences_prose is not None:
+        context_text, decision_text, consequences_text = context_prose, decision_prose, consequences_prose
+    else:
+        client = llm_module.get_client()
+        context_text, decision_text, consequences_text = client.generate_adr_body(
+            title=title_val,
+            rationale=rationale_val,
+            alternatives_summary=alt_summary,
+            constraints=constraint_list,
+            supersedes=supersedes_list,
+        )
 
     adr_id = store.next_id()
     from .models import Decision
@@ -653,6 +662,8 @@ def propose(
     ),
 )
 @click.option("--yes", "-y", is_flag=True, help="Non-interactive: skip all prompts and use provided flags or defaults.")
+@click.option("--decision", "decision_prose", default=None, help="ADR decision prose (bypasses LLM generation when all three prose flags are set).")
+@click.option("--consequences", "consequences_prose", default=None, help="ADR consequences prose (bypasses LLM generation when all three prose flags are set).")
 def promote(
     adr_id: str,
     context_text: Optional[str],
@@ -662,6 +673,8 @@ def promote(
     constraints: Optional[str],
     alternatives_json: Optional[str],
     yes: bool,
+    decision_prose: Optional[str],
+    consequences_prose: Optional[str],
 ) -> None:
     """Promote an observed entry to accepted (non-interactive with --yes)."""
     project_root = _find_project_root()
@@ -739,13 +752,16 @@ def promote(
                 if not click.confirm("Add another alternative?", default=False):
                     break
 
-    # Generate prose body via LLM
-    client = llm_module.get_client()
-    new_context, new_decision, new_consequences = client.generate_promotion_body(
-        title=decision.title,
-        context_provided=context_text,
-        existing_context=decision.context_text,
-    )
+    # Generate prose body — use supplied prose directly if all three sections provided
+    if context_text is not None and decision_prose is not None and consequences_prose is not None:
+        new_context, new_decision, new_consequences = context_text, decision_prose, consequences_prose
+    else:
+        client = llm_module.get_client()
+        new_context, new_decision, new_consequences = client.generate_promotion_body(
+            title=decision.title,
+            context_provided=context_text,
+            existing_context=decision.context_text,
+        )
 
     decision.status = Status.ACCEPTED
     decision.confidence = confidence
