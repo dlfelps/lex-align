@@ -136,8 +136,17 @@ def main() -> None:
 
 @main.command()
 @click.option("--yes", "-y", is_flag=True, help="Skip privacy confirmation prompt.")
-def init(yes: bool) -> None:
+@click.option(
+    "--registry",
+    "registry_path",
+    default=None,
+    type=click.Path(exists=True, dir_okay=False),
+    help="Path to an enterprise registry JSON file; recorded in .lex-align/config.json.",
+)
+def init(yes: bool, registry_path: Optional[str]) -> None:
     """Initialize lex-align in the current repository."""
+    from .registry import Registry, save_config, load_config
+
     project_root = Path.cwd()
 
     # Privacy notice on first run
@@ -169,6 +178,20 @@ def init(yes: bool) -> None:
     # Configure hooks
     add_lex_hooks(project_root)
 
+    registry_msg = None
+    if registry_path is not None:
+        absolute = Path(registry_path).expanduser().resolve()
+        # Validate by attempting a load before persisting.
+        Registry.load(absolute)
+        config = load_config(project_root)
+        try:
+            recorded = str(absolute.relative_to(project_root.resolve()))
+        except ValueError:
+            recorded = str(absolute)
+        config["registry_file"] = recorded
+        save_config(project_root, config)
+        registry_msg = f"Registry configured: {recorded}"
+
     # CLAUDE.md — agent behavioral rules
     command = detect_lex_command(project_root)
     section = _claude_md_section(command)
@@ -188,6 +211,8 @@ def init(yes: bool) -> None:
 
     click.echo("Initialized lex-align.")
     click.echo("Hooks configured in .claude/settings.json.")
+    if registry_msg:
+        click.echo(registry_msg)
     click.echo(claude_md_msg)
 
 
@@ -808,6 +833,91 @@ def uninstall(yes: bool) -> None:
 def privacy() -> None:
     """Display the privacy notice."""
     click.echo(_PRIVACY_NOTICE)
+
+
+# ── registry ──────────────────────────────────────────────────────────────────
+
+@main.group()
+def registry() -> None:
+    """Inspect or query the enterprise registry."""
+
+
+@registry.command("show")
+@click.option("--registry", "registry_path", default=None,
+              help="Override the configured registry file path.")
+def registry_show(registry_path: Optional[str]) -> None:
+    """Print the effective registry (global policies + packages)."""
+    from .registry import load_registry, resolve_registry_path
+
+    project_root = _find_project_root()
+    path = resolve_registry_path(project_root, registry_path)
+    if path is None:
+        raise click.ClickException(
+            "No registry configured. Pass --registry <path> or set LEXALIGN_REGISTRY_FILE, "
+            "or run `lex-align init --registry <path>`."
+        )
+    reg = load_registry(project_root, registry_path)
+    if reg is None:
+        raise click.ClickException(f"Registry file not found: {path}")
+
+    click.echo(f"Registry: {path}")
+    click.echo(f"Version: {reg.version}")
+    gp = reg.global_policies
+    click.echo("")
+    click.echo("Global policies")
+    click.echo(f"  auto_approve_licenses:         {', '.join(gp.auto_approve_licenses) or '(none)'}")
+    click.echo(f"  hard_ban_licenses:             {', '.join(gp.hard_ban_licenses) or '(none)'}")
+    if gp.require_human_review_licenses:
+        click.echo(
+            f"  require_human_review_licenses: {', '.join(gp.require_human_review_licenses)} "
+            "(treated as hard_ban until review flow is implemented)"
+        )
+    click.echo(f"  unknown_license_policy:        {gp.unknown_license_policy}")
+    click.echo("")
+    click.echo(f"Packages ({len(reg.packages)})")
+    for name in sorted(reg.packages):
+        rule = reg.packages[name]
+        suffix = ""
+        if rule.replacement:
+            suffix = f" → {rule.replacement}"
+        vc = rule.version_constraint_str()
+        if vc:
+            suffix += f" ({vc})"
+        reason = f" — {rule.reason}" if rule.reason else ""
+        click.echo(f"  [{rule.status.value}] {name}{suffix}{reason}")
+
+
+@registry.command("check")
+@click.argument("package")
+@click.option("--version", default=None, help="Target version to evaluate against constraints.")
+@click.option("--registry", "registry_path", default=None,
+              help="Override the configured registry file path.")
+def registry_check(package: str, version: Optional[str], registry_path: Optional[str]) -> None:
+    """Show the registry verdict for a package (and optional version)."""
+    from .registry import load_registry, Action
+
+    project_root = _find_project_root()
+    reg = load_registry(project_root, registry_path)
+    if reg is None:
+        raise click.ClickException(
+            "No registry configured. Pass --registry <path> or set LEXALIGN_REGISTRY_FILE."
+        )
+
+    verdict = reg.lookup(package, version)
+    click.echo(f"Package: {package}")
+    if version:
+        click.echo(f"Version: {version}")
+    click.echo(f"Action:  {verdict.action.value}")
+    if verdict.status is not None:
+        click.echo(f"Status:  {verdict.status.value}")
+    if verdict.reason:
+        click.echo(f"Reason:  {verdict.reason}")
+    if verdict.replacement:
+        click.echo(f"Replacement: {verdict.replacement}")
+    if verdict.version_constraint:
+        click.echo(f"Version constraint: {verdict.version_constraint}")
+    if verdict.action is Action.UNKNOWN:
+        click.echo("(Package is not in the registry; license policy will apply.)")
 
 
 # ── hook subcommands ──────────────────────────────────────────────────────────
