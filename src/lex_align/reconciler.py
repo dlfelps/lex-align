@@ -4,7 +4,7 @@ import tomllib
 from pathlib import Path
 from typing import Optional
 
-from .models import ObservedVia, Status
+from .models import Provenance, Status
 from .store import DecisionStore, create_observed
 
 
@@ -38,14 +38,14 @@ def find_uncovered(packages: set[str], store: DecisionStore) -> set[str]:
 def reconcile(
     pyproject_path: Path,
     store: DecisionStore,
-    observed_via: ObservedVia = ObservedVia.RECONCILIATION,
+    provenance: Provenance = Provenance.RECONCILIATION,
 ) -> list[str]:
     """Create observed entries for uncovered runtime deps. Returns new package names."""
     packages = get_runtime_deps(pyproject_path)
     uncovered = find_uncovered(packages, store)
     created = []
     for pkg in sorted(uncovered):
-        create_observed(pkg, store, observed_via)
+        create_observed(pkg, store, provenance)
         created.append(pkg)
     return created
 

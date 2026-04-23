@@ -32,10 +32,14 @@ class Reversible(str, Enum):
     NO = "no"
 
 
-class ObservedVia(str, Enum):
-    SEED = "seed"
-    RECONCILIATION = "reconciliation"
-    MANUAL = "manual"
+class Provenance(str, Enum):
+    """How a decision entered the store."""
+    RECONCILIATION = "reconciliation"              # observed, auto-created post-edit
+    MANUAL = "manual"                              # observed or accepted, direct agent/user action
+    REGISTRY_PREFERRED = "registry_preferred"      # accepted, auto-written for a registry "preferred" pkg
+    REGISTRY_APPROVED = "registry_approved"        # accepted, agent proposed on a registry "approved" pkg
+    LICENSE_AUTO_APPROVE = "license_auto_approve"  # accepted, auto-written under license policy
+    REGISTRY_BLOCKED = "registry_blocked"          # rejected, paper trail of a blocked attempt
 
 
 @dataclass
@@ -95,7 +99,11 @@ class Decision:
     supersedes: list[str] = field(default_factory=list)
     superseded_by: list[str] = field(default_factory=list)
     constraints_depended_on: list[str] = field(default_factory=list)
-    observed_via: Optional[ObservedVia] = None
+    provenance: Optional[Provenance] = None
+    license: Optional[str] = None
+    license_checked_at: Optional[datetime.date] = None
+    version_constraint: Optional[str] = None
+    registry_version: Optional[str] = None
     context_text: str = ""
     decision_text: str = ""
     consequences_text: str = ""
@@ -133,8 +141,16 @@ class Decision:
             fm["constraints_depended_on"] = self.constraints_depended_on
         if self.alternatives:
             fm["alternatives"] = [a.to_dict() for a in self.alternatives]
-        if self.observed_via is not None:
-            fm["observed_via"] = self.observed_via.value
+        if self.provenance is not None:
+            fm["provenance"] = self.provenance.value
+        if self.license is not None:
+            fm["license"] = self.license
+        if self.license_checked_at is not None:
+            fm["license_checked_at"] = self.license_checked_at.isoformat()
+        if self.version_constraint is not None:
+            fm["version_constraint"] = self.version_constraint
+        if self.registry_version is not None:
+            fm["registry_version"] = self.registry_version
         return fm
 
     @classmethod
@@ -151,7 +167,11 @@ class Decision:
             supersedes=list(fm.get("supersedes") or []),
             superseded_by=list(fm.get("superseded_by") or []),
             constraints_depended_on=list(fm.get("constraints_depended_on") or []),
-            observed_via=ObservedVia(fm["observed_via"]) if fm.get("observed_via") else None,
+            provenance=Provenance(fm["provenance"]) if fm.get("provenance") else None,
+            license=fm.get("license"),
+            license_checked_at=_parse_date(fm["license_checked_at"]) if fm.get("license_checked_at") else None,
+            version_constraint=fm.get("version_constraint"),
+            registry_version=fm.get("registry_version"),
             context_text=context_text,
             decision_text=decision_text,
             consequences_text=consequences_text,

@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
-from .models import ObservedVia, Status
+from .models import Provenance, Status
 from .store import DecisionStore
 
 
@@ -85,8 +85,8 @@ def generate_report(sessions_dir: Path, store: DecisionStore, since_str: Optiona
         if d.status in (Status.ACCEPTED, Status.SUPERSEDED, Status.REJECTED)
         and (since_date is None or d.created >= since_date)
     ]
-    promote_count = sum(1 for d in written if d.observed_via is not None)
-    propose_count = sum(1 for d in written if d.observed_via is None)
+    promote_count = sum(1 for d in written if d.provenance is not None)
+    propose_count = sum(1 for d in written if d.provenance is None)
     total_writes = promote_count + propose_count
 
     reconciliation_events = [e for e in automated if e.get("command") == "reconciliation"]
@@ -98,9 +98,8 @@ def generate_report(sessions_dir: Path, store: DecisionStore, since_str: Optiona
     promotion_ratio = f"{int(promote_count/opportunity_count*100)}%" if opportunity_count else "N/A"
 
     observed = [d for d in all_decisions if d.status == Status.OBSERVED]
-    seed_count = sum(1 for d in observed if d.observed_via == ObservedVia.SEED)
-    recon_count = sum(1 for d in observed if d.observed_via == ObservedVia.RECONCILIATION)
-    manual_count = sum(1 for d in observed if d.observed_via == ObservedVia.MANUAL)
+    recon_count = sum(1 for d in observed if d.provenance == Provenance.RECONCILIATION)
+    manual_count = sum(1 for d in observed if d.provenance == Provenance.MANUAL)
 
     since_label = f" --since \"{since_str}\"" if since_str else ""
     lines = [f"$ lex-align report{since_label}"]
@@ -133,7 +132,6 @@ def generate_report(sessions_dir: Path, store: DecisionStore, since_str: Optiona
 
     lines.append("")
     lines.append(f"Observed entries: {len(observed)} total")
-    lines.append(f"  via seed:           {seed_count:>3}   (from initial adoption)")
     lines.append(f"  via reconciliation: {recon_count:>3}   (created when propose was skipped)")
     lines.append(f"  via manual:         {manual_count:>3}")
 

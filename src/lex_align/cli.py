@@ -124,26 +124,6 @@ the required flags, then pass `--yes` to skip all confirmation prompts.
 """
 
 
-def _first_run_audit_prompt(command: str = "lex-align") -> str:
-    return f"""\
-"I have just initialized lex-align in this repository. Review the list
-of **OBSERVED** dependencies provided in the architecture brief.
-
-For each central dependency (e.g., the web framework, database client,
-or CLI library):
-
-1. **Research** why it was likely chosen over common alternatives by
-   examining the code, imports, and documentation.
-2. **Analyze** the pros and cons of this choice in the context of this
-   specific project.
-3. **Execute** `{command} promote <id>` to convert these into **ACCEPTED**
-   entries. Include the rationale and at least one alternative considered
-   in the promotion flow.
-
-If you cannot find evidence for why a dependency was chosen, leave it as
-'Observed' to maintain store integrity."
-"""
-
 _FIRST_RUN_MARKER = Path.home() / ".lex-align-initialized"
 
 
@@ -170,28 +150,21 @@ def init(yes: bool) -> None:
         _FIRST_RUN_MARKER.parent.mkdir(parents=True, exist_ok=True)
         _FIRST_RUN_MARKER.touch()
 
-    adr_dir = project_root / ".lex-align"
-    adr_dir.mkdir(exist_ok=True)
-    (adr_dir / "decisions").mkdir(exist_ok=True)
-    (adr_dir / "sessions").mkdir(exist_ok=True)
+    lex_dir = project_root / ".lex-align"
+    lex_dir.mkdir(exist_ok=True)
+    (lex_dir / "decisions").mkdir(exist_ok=True)
+    (lex_dir / "sessions").mkdir(exist_ok=True)
 
-    # Gitignore sessions/
+    # Gitignore local-only artifacts
     gitignore = project_root / ".gitignore"
-    gitignore_entry = ".lex-align/sessions/"
+    gitignore_entries = [".lex-align/sessions/", ".lex-align/license-cache.json"]
     if gitignore.exists():
         content = gitignore.read_text()
-        if gitignore_entry not in content:
-            gitignore.write_text(content.rstrip() + f"\n{gitignore_entry}\n")
+        additions = [e for e in gitignore_entries if e not in content]
+        if additions:
+            gitignore.write_text(content.rstrip() + "\n" + "\n".join(additions) + "\n")
     else:
-        gitignore.write_text(f"{gitignore_entry}\n")
-
-    # Seed from pyproject.toml
-    pyproject = project_root / "pyproject.toml"
-    store = _make_store(project_root)
-    seeded = []
-    if pyproject.exists():
-        from .models import ObservedVia
-        seeded = reconcile(pyproject, store, observed_via=ObservedVia.SEED)
+        gitignore.write_text("\n".join(gitignore_entries) + "\n")
 
     # Configure hooks
     add_lex_hooks(project_root)
@@ -214,20 +187,6 @@ def init(yes: bool) -> None:
         claude_md_msg = "CLAUDE.md already contains lex-align section (skipped)."
 
     click.echo("Initialized lex-align.")
-    if seeded:
-        click.echo(f"Seeded {len(seeded)} observed entr{'y' if len(seeded)==1 else 'ies'} from pyproject.toml:")
-        for pkg in seeded:
-            click.echo(f"  {pkg}")
-        n = len(seeded)
-        click.echo(
-            f"\nlex-align has seeded {n} observed {'entry' if n == 1 else 'entries'} "
-            "from your existing dependencies.\n"
-            "These entries reflect what the codebase uses but contain no rationale.\n\n"
-            "To backfill rationale for existing dependencies, ask your AI agent to\n"
-            "run the First-Run Audit:\n"
-        )
-        click.echo(_first_run_audit_prompt(detect_lex_command(project_root)))
-        click.echo("(You can display this prompt again with `lex-align first-run-audit`.)")
     click.echo("Hooks configured in .claude/settings.json.")
     click.echo(claude_md_msg)
 
@@ -261,8 +220,8 @@ def show(adr_id: str) -> None:
         lines.append(f"Superseded by: {', '.join(decision.superseded_by)}")
     if decision.constraints_depended_on:
         lines.append(f"Constraints: {', '.join(decision.constraints_depended_on)}")
-    if decision.observed_via:
-        lines.append(f"Observed via: {decision.observed_via.value}")
+    if decision.provenance:
+        lines.append(f"Observed via: {decision.provenance.value}")
 
     if decision.alternatives:
         lines.append("\nAlternatives:")
@@ -849,15 +808,6 @@ def uninstall(yes: bool) -> None:
 def privacy() -> None:
     """Display the privacy notice."""
     click.echo(_PRIVACY_NOTICE)
-
-
-# ── first-run-audit ───────────────────────────────────────────────────────────
-
-@main.command("first-run-audit")
-def first_run_audit() -> None:
-    """Display the First-Run Audit prompt for backfilling observed entries."""
-    project_root = _find_project_root()
-    click.echo(_first_run_audit_prompt(detect_lex_command(project_root)))
 
 
 # ── hook subcommands ──────────────────────────────────────────────────────────

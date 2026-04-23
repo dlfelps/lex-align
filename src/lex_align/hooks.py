@@ -156,7 +156,7 @@ def _handle_code_edit_pre(
             if state.has_observed_prompt_fired(d.id):
                 continue
             state.record_observed_prompt(d.id)
-            via = f"during {d.observed_via.value}" if d.observed_via else "observed"
+            via = f"during {d.provenance.value}" if d.provenance else "observed"
             prompts.append(
                 f"You are editing code that imports `{imp}`, an observed dependency.\n"
                 f"{d.id}: {d.title} (observed; no rationale captured)\n"
