@@ -10,8 +10,8 @@
   },
 
   // Explicitly mount only this folder; prevents parent directory from being visible in the container
-  "workspaceMount": "source=${localWorkspaceFolder},target=/workspaces/adr-agent,type=bind,consistency=cached",
-  "workspaceFolder": "/workspaces/adr-agent",
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspaces/lex-align,type=bind,consistency=cached",
+  "workspaceFolder": "/workspaces/lex-align",
 
   // Install Claude Code after the container is created
   "postCreateCommand": "npm install -g @anthropic-ai/claude-code && mkdir -p ~/.claude && cp -r /tmp/claude-host/. ~/.claude/ && chmod 700 ~/.claude && chmod 600 ~/.claude/.credentials.json 2>/dev/null || true && cp /tmp/claude-host.json ~/.claude.json && chmod 600 ~/.claude.json",
