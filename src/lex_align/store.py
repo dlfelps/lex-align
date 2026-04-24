@@ -176,6 +176,18 @@ class DecisionStore:
                     index[term].append(decision.id)
         self._save_index(index)
 
+    def index_is_healthy(self) -> bool:
+        """Return True if every decision on disk is reflected in the index."""
+        decisions = self.load_all()
+        if not decisions:
+            return True
+        if not self._index_path.exists():
+            return False
+        index = self._load_index()
+        indexed_ids = {adr_id for ids in index.values() for adr_id in ids}
+        expected_ids = {d.id for d in decisions}
+        return expected_ids <= indexed_ids
+
     def search_by_terms(self, terms: set[str]) -> list[Decision]:
         """Find decisions matching any of the given terms via the index."""
         index = self._load_index()

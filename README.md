@@ -180,7 +180,6 @@ lex-align promote ADR-0003 --context "..." --yes
 lex-align show ADR-0047
 lex-align history src/auth/
 lex-align check-constraint blue-green-deploys
-lex-align rebuild-index
 lex-align report
 lex-align doctor [--repair]
 lex-align uninstall

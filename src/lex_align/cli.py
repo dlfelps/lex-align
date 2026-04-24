@@ -123,15 +123,19 @@ def _claude_md_section(command: str = "lex-align") -> str:
     return f"""\
 ## lex-align
 
-Before starting any non-trivial task, run:
+Before starting any non-trivial task that may touch dependencies, run:
   {command} plan "<task description>"
-This surfaces relevant decisions, previously-rejected alternatives, and active
-constraints. Do this before writing code, not after.
+This surfaces relevant decisions, previously-evaluated alternatives, active
+constraints, and any registry guidance that applies to the task.
 
 When modifying pyproject.toml dependencies:
-- Run `{command} propose` BEFORE making the change if it represents a new decision.
-- If you added or removed a dependency without proposing first, run
-  `{command} promote <id>` to capture rationale while you still have context.
+- The PreToolUse hook will evaluate every added or bumped package against the
+  enterprise registry and license policy. It may hard-block the edit.
+- For `preferred` packages, the hook auto-writes an accepted ADR; no action needed.
+- For `approved` (neutral) packages, run `{command} propose` to document the
+  architectural need.
+- For `deprecated`, `banned`, or license-blocked packages, use the registry-named
+  replacement or choose a different package.
 
 When you encounter an OBSERVED entry for a dependency you are actively using:
 - Run `{command} promote <id>`. You likely have enough context from the current
@@ -140,12 +144,11 @@ When you encounter an OBSERVED entry for a dependency you are actively using:
 Run `{command} show <id>` before touching code governed by a decision. Do not
 repeat evaluation work already recorded in alternatives.
 
-IMPORTANT for AI agents: when running `{command} propose` or
-`{command} promote`, pass `--yes` along with every required flag. When stdin is
-not a TTY (as in any agent session), these commands auto-enable `--yes` and
-will fast-fail with a clear error listing any missing flags — they will never
-hang on a prompt. Required flags for `propose --yes`: `--title`, `--context`,
-`--decision`, `--consequences`. Required for `promote --yes`: `--context`.
+IMPORTANT for AI agents: NEVER run `{command} propose` or `{command} promote`
+without supplying all required flags and `--yes`. These commands have interactive
+prompts that will hang a non-interactive session. Always use flags to provide
+every field. Run `{command} propose --help` or `{command} promote --help` to see
+the required flags.
 """
 
 
@@ -868,24 +871,6 @@ def promote(
     click.echo(f"\nPromoted {decision.id} to accepted. Written: {path}")
 
 
-# ── rebuild-index ─────────────────────────────────────────────────────────────
-
-@main.command("rebuild-index")
-def rebuild_index() -> None:
-    """Rebuild the inverted index from all decision files."""
-    project_root = _find_project_root()
-    _require_initialized(project_root)
-    store = _make_store(project_root)
-
-    logger = _get_logger(project_root)
-    if logger:
-        logger.log("maintenance", "rebuild-index")
-
-    store.rebuild_index()
-    count = len(store.load_all())
-    click.echo(f"Index rebuilt from {count} decision {'file' if count == 1 else 'files'}.")
-
-
 # ── report ────────────────────────────────────────────────────────────────────
 
 @main.command()
@@ -954,28 +939,48 @@ def compliance(dry_run: bool, registry_path: Optional[str]) -> None:
 # ── doctor ────────────────────────────────────────────────────────────────────
 
 @main.command()
-@click.option("--repair", is_flag=True, help="Repair missing or outdated hook configuration.")
+@click.option(
+    "--repair",
+    is_flag=True,
+    help="Repair missing hook configuration and/or rebuild a stale decision index.",
+)
 def doctor(repair: bool) -> None:
-    """Check hook configuration health."""
+    """Check hook configuration and decision-index health."""
     project_root = _find_project_root()
     _require_initialized(project_root)
+    store = _make_store(project_root)
 
-    status = check_hooks_present(project_root)
-    all_ok = all(status.values())
+    hook_status = check_hooks_present(project_root)
+    hooks_ok = all(hook_status.values())
+    index_ok = store.index_is_healthy()
 
-    for event, present in status.items():
+    for event, present in hook_status.items():
         mark = "✓" if present else "✗"
         click.echo(f"  {mark} {event} hook")
+    click.echo(f"  {'✓' if index_ok else '✗'} decision index")
 
-    if all_ok:
-        click.echo("Hook configuration is healthy.")
-    else:
+    if hooks_ok and index_ok:
+        click.echo("Configuration is healthy.")
+        return
+
+    if not hooks_ok:
         click.echo("Some hooks are missing or misconfigured.")
-        if repair:
+    if not index_ok:
+        click.echo("Decision index is missing or out of sync with decision files.")
+
+    if repair:
+        if not hooks_ok:
             add_lex_hooks(project_root)
             click.echo("Repaired hook configuration.")
-        else:
-            click.echo("Run `lex-align doctor --repair` to fix.")
+        if not index_ok:
+            store.rebuild_index()
+            count = len(store.load_all())
+            click.echo(
+                f"Rebuilt index from {count} decision "
+                f"{'file' if count == 1 else 'files'}."
+            )
+    else:
+        click.echo("Run `lex-align doctor --repair` to fix.")
 
 
 # ── uninstall ─────────────────────────────────────────────────────────────────
@@ -1090,27 +1095,10 @@ def registry_check(package: str, version: Optional[str], registry_path: Optional
         click.echo("(Package is not in the registry; license policy will apply.)")
 
 
-# ── hook subcommands ──────────────────────────────────────────────────────────
+# ── hook dispatch (hidden) ────────────────────────────────────────────────────
 
-@main.command("session-start", hidden=True)
-def session_start() -> None:
-    """Hook: runs at session start."""
-    run_hook("session-start")
-
-
-@main.command("pre-tool-use", hidden=True)
-def pre_tool_use() -> None:
-    """Hook: runs before tool use."""
-    run_hook("pre-tool-use")
-
-
-@main.command("post-tool-use", hidden=True)
-def post_tool_use() -> None:
-    """Hook: runs after tool use."""
-    run_hook("post-tool-use")
-
-
-@main.command("session-end", hidden=True)
-def session_end() -> None:
-    """Hook: runs at session end."""
-    run_hook("session-end")
+@main.command(hidden=True)
+@click.argument("name")
+def hook(name: str) -> None:
+    """Hook dispatch entry point invoked by the Claude Code wrapper script."""
+    run_hook(name)
