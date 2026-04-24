@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from lex_align.models import Confidence, Decision, ObservedVia, Scope, Status
+from lex_align.models import Confidence, Decision, Provenance, Scope, Status
 from lex_align.report import generate_report, load_events, parse_since
 from lex_align.session import EventLogger
 from lex_align.store import DecisionStore
@@ -104,31 +104,66 @@ def test_generate_report_observed_breakdown(tmp_path: Path):
     decisions_dir.mkdir()
     store = DecisionStore(decisions_dir)
 
-    seed_d = Decision(
-        id="ADR-0001",
-        title="Uses fastapi",
-        status=Status.OBSERVED,
-        created=dt.date.today(),
-        confidence=Confidence.MEDIUM,
-        scope=Scope(tags=["fastapi"]),
-        observed_via=ObservedVia.SEED,
-    )
-    recon_d = Decision(
-        id="ADR-0002",
-        title="Uses redis",
-        status=Status.OBSERVED,
-        created=dt.date.today(),
-        confidence=Confidence.MEDIUM,
-        scope=Scope(tags=["redis"]),
-        observed_via=ObservedVia.RECONCILIATION,
-    )
-    store.save(seed_d)
-    store.save(recon_d)
+    for i, (name, prov) in enumerate(
+        [("fastapi", Provenance.RECONCILIATION), ("redis", Provenance.MANUAL)],
+        start=1,
+    ):
+        store.save(Decision(
+            id=f"ADR-{i:04d}",
+            title=f"Uses {name}",
+            status=Status.OBSERVED,
+            created=dt.date.today(),
+            confidence=Confidence.MEDIUM,
+            scope=Scope(tags=[name]),
+            provenance=prov,
+        ))
 
     report = generate_report(sessions_dir, store)
-    assert "via seed" in report
     assert "via reconciliation" in report
+    assert "via manual" in report
     assert "Observed entries: 2" in report
+
+
+def test_generate_report_enforcement_section(tmp_path: Path):
+    sessions_dir = tmp_path / "sessions"
+    sessions_dir.mkdir()
+    decisions_dir = tmp_path / "decisions"
+    decisions_dir.mkdir()
+    store = DecisionStore(decisions_dir)
+
+    _write_event(sessions_dir, "s1", "automated", "enforcement-block", ["pyqt5"])
+    _write_event(sessions_dir, "s1", "automated", "enforcement-allow", ["httpx"])
+    _write_event(sessions_dir, "s1", "automated", "enforcement-license-block", ["gpllib"])
+
+    report = generate_report(sessions_dir, store)
+    assert "Enforcement" in report
+    assert "preferred auto-approvals:   1" in report
+    assert "registry blocks:            1" in report
+    assert "license blocks:             1" in report
+
+
+def test_generate_report_writes_breakdown_by_provenance(tmp_path: Path):
+    import datetime as dt
+    sessions_dir = tmp_path / "sessions"
+    sessions_dir.mkdir()
+    decisions_dir = tmp_path / "decisions"
+    decisions_dir.mkdir()
+    store = DecisionStore(decisions_dir)
+
+    store.save(Decision(
+        id="ADR-0001", title="Use httpx", status=Status.ACCEPTED,
+        created=dt.date.today(), confidence=Confidence.HIGH, scope=Scope(tags=["httpx"]),
+        provenance=Provenance.REGISTRY_PREFERRED,
+    ))
+    store.save(Decision(
+        id="ADR-0002", title="Blocked: add pyqt5", status=Status.REJECTED,
+        created=dt.date.today(), confidence=Confidence.HIGH, scope=Scope(tags=["pyqt5"]),
+        provenance=Provenance.REGISTRY_BLOCKED,
+    ))
+
+    report = generate_report(sessions_dir, store)
+    assert "auto (registry preferred):  1" in report
+    assert "blocked attempts:           1" in report
 
 
 def test_generate_report_with_since(sessions_dir: Path, tmp_path: Path):

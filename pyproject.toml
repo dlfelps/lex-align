@@ -27,6 +27,12 @@ packages = ["src/lex_align"]
 testpaths = ["tests"]
 addopts = "-v"
 
+[dependency-groups]
+dev = [
+    "pytest>=9.0.3",
+    "pytest-mock>=3.15.1",
+]
+
 [project.optional-dependencies]
 dev = [
     "pytest>=7.0",

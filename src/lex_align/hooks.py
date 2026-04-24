@@ -208,7 +208,9 @@ def _handle_dep_edit_pre(
             continue
 
         if verdict.action is Action.UNKNOWN:
-            info, lic_verdict = resolve_license(package, version, cache, registry.global_policies)
+            # License is a package-level attribute; cache at the package level
+            # rather than per version so repeated edits don't thrash PyPI.
+            info, lic_verdict = resolve_license(package, None, cache, registry.global_policies)
             if lic_verdict.action is Action.BLOCK:
                 blocks.append(
                     f"  ✗ {package} ({spec}) — {lic_verdict.reason} "

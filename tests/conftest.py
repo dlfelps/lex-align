@@ -7,12 +7,9 @@ from pathlib import Path
 import pytest
 
 from lex_align.models import (
-    Alternative,
     Confidence,
     Decision,
-    ObservedVia,
-    Outcome,
-    Reversible,
+    Provenance,
     Scope,
     Status,
 )
@@ -22,8 +19,8 @@ from lex_align.store import DecisionStore
 @pytest.fixture
 def tmp_project(tmp_path: Path) -> Path:
     """A temporary project root with .lex-align initialized."""
-    (tmp_path / ".lex-align" / "decisions").mkdir(parents=True)
-    (tmp_path / ".lex-align" / "sessions").mkdir(parents=True)
+    (tmp_path / ".lex-align" / "decisions").mkdir(parents=True, exist_ok=True)
+    (tmp_path / ".lex-align" / "sessions").mkdir(parents=True, exist_ok=True)
     return tmp_path
 
 
@@ -56,26 +53,8 @@ def observed_decision() -> Decision:
         created=datetime.date(2026, 1, 10),
         confidence=Confidence.MEDIUM,
         scope=Scope(tags=["redis"]),
-        observed_via=ObservedVia.SEED,
+        provenance=Provenance.RECONCILIATION,
     )
-
-
-@pytest.fixture
-def mock_llm(mocker):
-    """Mock the LLM client used by propose and promote commands."""
-    client = mocker.MagicMock()
-    client.generate_adr_body.return_value = (
-        "Context: a background situation.",
-        "Decision: we chose this approach.",
-        "Consequences: positive and negative effects.",
-    )
-    client.generate_promotion_body.return_value = (
-        "Context: why this dependency exists.",
-        "Decision: adopted this library.",
-        "Consequences: enables certain features.",
-    )
-    mocker.patch("lex_align.llm.get_client", return_value=client)
-    return client
 
 
 @pytest.fixture
@@ -93,4 +72,34 @@ dependencies = [
 """
     path = tmp_project / "pyproject.toml"
     path.write_text(content)
+    return path
+
+
+@pytest.fixture
+def sample_registry_file(tmp_project: Path) -> Path:
+    """A registry JSON with one example of each status plus license policy."""
+    import json
+    registry = {
+        "version": "1.2",
+        "global_policies": {
+            "auto_approve_licenses": ["MIT", "Apache-2.0", "BSD-3-Clause"],
+            "hard_ban_licenses": ["AGPL-3.0", "GPL-3.0", "LGPL-3.0"],
+            "unknown_license_policy": "block",
+        },
+        "packages": {
+            "httpx": {"status": "preferred", "reason": "Standard async HTTP client."},
+            "requests": {
+                "status": "deprecated", "replacement": "httpx",
+                "reason": "Migrating to async.",
+            },
+            "pyqt5": {"status": "banned", "reason": "GPL."},
+            "cryptography": {
+                "status": "version-constrained", "min_version": "42.0.0",
+                "reason": "CVE-2023-50782",
+            },
+            "flask": {"status": "approved", "reason": "Internal tools only."},
+        },
+    }
+    path = tmp_project / "registry.json"
+    path.write_text(json.dumps(registry))
     return path
