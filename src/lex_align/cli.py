@@ -123,15 +123,19 @@ def _claude_md_section(command: str = "lex-align") -> str:
     return f"""\
 ## lex-align
 
-Before starting any non-trivial task, run:
+Before starting any non-trivial task that may touch dependencies, run:
   {command} plan "<task description>"
-This surfaces relevant decisions, previously-rejected alternatives, and active
-constraints. Do this before writing code, not after.
+This surfaces relevant decisions, previously-evaluated alternatives, active
+constraints, and any registry guidance that applies to the task.
 
 When modifying pyproject.toml dependencies:
-- Run `{command} propose` BEFORE making the change if it represents a new decision.
-- If you added or removed a dependency without proposing first, run
-  `{command} promote <id>` to capture rationale while you still have context.
+- The PreToolUse hook will evaluate every added or bumped package against the
+  enterprise registry and license policy. It may hard-block the edit.
+- For `preferred` packages, the hook auto-writes an accepted ADR; no action needed.
+- For `approved` (neutral) packages, run `{command} propose` to document the
+  architectural need.
+- For `deprecated`, `banned`, or license-blocked packages, use the registry-named
+  replacement or choose a different package.
 
 When you encounter an OBSERVED entry for a dependency you are actively using:
 - Run `{command} promote <id>`. You likely have enough context from the current
@@ -140,12 +144,11 @@ When you encounter an OBSERVED entry for a dependency you are actively using:
 Run `{command} show <id>` before touching code governed by a decision. Do not
 repeat evaluation work already recorded in alternatives.
 
-IMPORTANT for AI agents: when running `{command} propose` or
-`{command} promote`, pass `--yes` along with every required flag. When stdin is
-not a TTY (as in any agent session), these commands auto-enable `--yes` and
-will fast-fail with a clear error listing any missing flags — they will never
-hang on a prompt. Required flags for `propose --yes`: `--title`, `--context`,
-`--decision`, `--consequences`. Required for `promote --yes`: `--context`.
+IMPORTANT for AI agents: NEVER run `{command} propose` or `{command} promote`
+without supplying all required flags and `--yes`. These commands have interactive
+prompts that will hang a non-interactive session. Always use flags to provide
+every field. Run `{command} propose --help` or `{command} promote --help` to see
+the required flags.
 """
 
 
