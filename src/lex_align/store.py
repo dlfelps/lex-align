@@ -8,7 +8,7 @@ from typing import Optional
 
 import frontmatter
 
-from .models import Decision, ObservedVia, Scope, Status
+from .models import Decision, Provenance, Scope, Status
 
 _STOP_WORDS: frozenset[str] = frozenset({
     "a", "an", "the", "is", "it", "in", "on", "at", "to", "for", "of", "and",
@@ -140,6 +140,10 @@ class DecisionStore:
             terms.update(tokenize(alt.name) - _STOP_WORDS)
             if alt.constraint:
                 terms.add(alt.constraint.lower())
+        if decision.license:
+            terms.add(decision.license.lower())
+        if decision.provenance is not None:
+            terms.add(decision.provenance.value)
         for text in (decision.context_text, decision.decision_text):
             for w in tokenize(text):
                 if w not in _STOP_WORDS and len(w) > 2:
@@ -207,7 +211,7 @@ def _build_body(decision: Decision) -> str:
 def create_observed(
     package_name: str,
     store: DecisionStore,
-    observed_via: ObservedVia,
+    provenance: Provenance,
     created: Optional[datetime.date] = None,
 ) -> Decision:
     from .models import Confidence
@@ -218,7 +222,7 @@ def create_observed(
         created=created or datetime.date.today(),
         confidence=Confidence.MEDIUM,
         scope=Scope(tags=[package_name]),
-        observed_via=observed_via,
+        provenance=provenance,
     )
     store.save(decision)
     return decision

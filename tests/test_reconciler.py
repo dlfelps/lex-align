@@ -3,8 +3,8 @@ from __future__ import annotations
 
 import pytest
 
-from adr_agent.models import ObservedVia, Status
-from adr_agent.reconciler import (
+from lex_align.models import Provenance, Status
+from lex_align.reconciler import (
     _normalize_name,
     apply_edit,
     diff_deps,
@@ -12,7 +12,7 @@ from adr_agent.reconciler import (
     get_runtime_deps,
     reconcile,
 )
-from adr_agent.store import DecisionStore
+from lex_align.store import DecisionStore
 
 
 def test_get_runtime_deps(pyproject_toml):
@@ -67,7 +67,7 @@ def test_reconcile_creates_observed_entries(store: DecisionStore, pyproject_toml
     assert "fastapi" in created or "redis" in created
     decisions = store.load_all()
     assert all(d.status == Status.OBSERVED for d in decisions)
-    assert all(d.observed_via == ObservedVia.RECONCILIATION for d in decisions)
+    assert all(d.provenance == Provenance.RECONCILIATION for d in decisions)
 
 
 def test_reconcile_idempotent(store: DecisionStore, pyproject_toml):
@@ -79,9 +79,9 @@ def test_reconcile_idempotent(store: DecisionStore, pyproject_toml):
 
 
 def test_reconcile_seed_via(store: DecisionStore, pyproject_toml):
-    created = reconcile(pyproject_toml, store, observed_via=ObservedVia.SEED)
+    created = reconcile(pyproject_toml, store, provenance=Provenance.RECONCILIATION)
     decisions = store.load_all()
-    assert all(d.observed_via == ObservedVia.SEED for d in decisions)
+    assert all(d.provenance == Provenance.RECONCILIATION for d in decisions)
 
 
 def test_diff_deps_added():

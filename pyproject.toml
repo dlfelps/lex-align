@@ -3,30 +3,35 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "adr-agent"
+name = "lex-align"
 dynamic = ["version"]
-description = "Per-repository architectural memory for AI agents"
+description = "Enterprise legal and architectural alignment for AI coding agents"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "click>=8.0",
     "python-frontmatter>=1.1",
-    "anthropic>=0.40",
     "pyyaml>=6.0",
 ]
 
 [project.scripts]
-adr-agent = "adr_agent.cli:main"
+lex-align = "lex_align.cli:main"
 
 [tool.hatch.version]
-path = "src/adr_agent/__init__.py"
+path = "src/lex_align/__init__.py"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/adr_agent"]
+packages = ["src/lex_align"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-v"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.3",
+    "pytest-mock>=3.15.1",
+]
 
 [project.optional-dependencies]
 dev = [

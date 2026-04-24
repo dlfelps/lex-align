@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from adr_agent.session import (
+from lex_align.session import (
     EventLogger,
     SessionState,
     clear_current_session,

@@ -5,11 +5,11 @@ import datetime
 
 import pytest
 
-from adr_agent.models import (
+from lex_align.models import (
     Alternative,
     Confidence,
     Decision,
-    ObservedVia,
+    Provenance,
     Outcome,
     Reversible,
     Scope,
@@ -146,10 +146,11 @@ def test_decision_to_frontmatter_excludes_empty_lists():
     assert "supersedes" not in fm
     assert "superseded_by" not in fm
     assert "constraints_depended_on" not in fm
-    assert "observed_via" not in fm
+    assert "provenance" not in fm
+    assert "license" not in fm
 
 
-def test_decision_to_frontmatter_observed_via():
+def test_decision_to_frontmatter_provenance():
     d = Decision(
         id="ADR-0002",
         title="Uses redis",
@@ -157,11 +158,39 @@ def test_decision_to_frontmatter_observed_via():
         created=datetime.date(2026, 1, 1),
         confidence=Confidence.MEDIUM,
         scope=Scope(tags=["redis"]),
-        observed_via=ObservedVia.SEED,
+        provenance=Provenance.RECONCILIATION,
     )
     fm = d.to_frontmatter()
-    assert fm["observed_via"] == "seed"
+    assert fm["provenance"] == "reconciliation"
     assert fm["status"] == "observed"
+
+
+def test_decision_to_frontmatter_license_and_version():
+    d = Decision(
+        id="ADR-0010",
+        title="Use httpx",
+        status=Status.ACCEPTED,
+        created=datetime.date(2026, 4, 1),
+        confidence=Confidence.HIGH,
+        scope=Scope(tags=["httpx"]),
+        provenance=Provenance.REGISTRY_PREFERRED,
+        license="BSD-3-Clause",
+        license_checked_at=datetime.date(2026, 4, 1),
+        version_constraint=">=0.28,<1.0",
+        registry_version="1.2",
+    )
+    fm = d.to_frontmatter()
+    assert fm["license"] == "BSD-3-Clause"
+    assert fm["license_checked_at"] == "2026-04-01"
+    assert fm["version_constraint"] == ">=0.28,<1.0"
+    assert fm["registry_version"] == "1.2"
+    # Round-trip
+    restored = Decision.from_frontmatter(fm, "")
+    assert restored.license == "BSD-3-Clause"
+    assert restored.license_checked_at == datetime.date(2026, 4, 1)
+    assert restored.version_constraint == ">=0.28,<1.0"
+    assert restored.registry_version == "1.2"
+    assert restored.provenance == Provenance.REGISTRY_PREFERRED
 
 
 def test_decision_from_frontmatter():

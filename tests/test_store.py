@@ -5,17 +5,17 @@ import datetime
 
 import pytest
 
-from adr_agent.models import (
+from lex_align.models import (
     Alternative,
     Confidence,
     Decision,
-    ObservedVia,
+    Provenance,
     Outcome,
     Reversible,
     Scope,
     Status,
 )
-from adr_agent.store import DecisionStore, create_observed, tokenize
+from lex_align.store import DecisionStore, create_observed, tokenize
 
 
 def test_save_and_load(store: DecisionStore, sample_decision: Decision):
@@ -110,7 +110,7 @@ def test_save_observed_entry(store: DecisionStore, observed_decision: Decision):
     store.save(observed_decision)
     loaded = store.get("ADR-0002")
     assert loaded.status == Status.OBSERVED
-    assert loaded.observed_via == ObservedVia.SEED
+    assert loaded.provenance == Provenance.RECONCILIATION
 
 
 def test_find_covering_by_title(store: DecisionStore, sample_decision: Decision):
@@ -260,9 +260,9 @@ def test_check_constraint(store: DecisionStore):
 
 
 def test_create_observed(store: DecisionStore):
-    decision = create_observed("redis", store, ObservedVia.SEED)
+    decision = create_observed("redis", store, Provenance.RECONCILIATION)
     assert decision.status == Status.OBSERVED
-    assert decision.observed_via == ObservedVia.SEED
+    assert decision.provenance == Provenance.RECONCILIATION
     assert "redis" in decision.title.lower()
     loaded = store.get(decision.id)
     assert loaded is not None
