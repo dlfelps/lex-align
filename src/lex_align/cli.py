@@ -835,6 +835,58 @@ def report(since: Optional[str]) -> None:
     click.echo(generate_report(sessions_dir, store, since_str=since))
 
 
+# ── compliance ────────────────────────────────────────────────────────────────
+
+@main.command()
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    help="Analyze and report without writing any ADRs or observed entries.",
+)
+@click.option(
+    "--registry",
+    "registry_path",
+    default=None,
+    help="Override the configured registry file path.",
+)
+def compliance(dry_run: bool, registry_path: Optional[str]) -> None:
+    """Cold-start: evaluate every existing dependency against the registry.
+
+    Writes accepted ADRs for preferred and license-auto-approved packages,
+    creates observed entries for registry-`approved` packages (which the agent
+    must then promote with rationale), and refuses to seed if any blockers
+    (banned, deprecated, license-blocked) are present.
+
+    Exit codes: 0 = passing, 1 = needs ADR(s), 2 = blockers present.
+    """
+    from . import compliance as compliance_mod
+    from .registry import load_registry
+
+    project_root = _find_project_root()
+    _require_initialized(project_root)
+    store = _make_store(project_root)
+    pyproject = project_root / "pyproject.toml"
+    if not pyproject.exists():
+        raise click.ClickException("No pyproject.toml found at project root.")
+
+    registry = load_registry(project_root, registry_path)
+
+    logger = _get_logger(project_root)
+    if logger:
+        logger.log_voluntary("compliance", ["dry-run"] if dry_run else [])
+
+    report = compliance_mod.run(
+        project_root, pyproject, store, registry, dry_run=dry_run
+    )
+    click.echo(compliance_mod.format_report(report))
+
+    if report.blocked:
+        sys.exit(2)
+    if report.needs_adr:
+        sys.exit(1)
+    sys.exit(0)
+
+
 # ── doctor ────────────────────────────────────────────────────────────────────
 
 @main.command()
