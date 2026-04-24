@@ -59,7 +59,7 @@ class SessionState:
 class EventLogger:
     """Writes JSONL event log for a session."""
 
-    VOLUNTARY = {"show", "plan", "history", "check-constraint", "propose", "promote"}
+    VOLUNTARY = {"show", "plan", "history", "check-constraint", "propose", "promote", "compliance"}
     AUTOMATED = {"session-start", "pre-tool-use", "post-tool-use", "session-end", "reconciliation"}
 
     def __init__(self, sessions_dir: Path, session_id: str):

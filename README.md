@@ -80,7 +80,29 @@ git add .lex-align/ .claude/settings.json .gitignore
 git commit -m "Initialize lex-align"
 ```
 
-The store starts empty — lex-align does not seed observed entries from existing dependencies. Decisions appear only when the enforcement hook auto-writes them or the agent calls `propose` / `promote`.
+The store starts empty — `init` does not seed observed entries from existing dependencies. To bootstrap a project that already has dependencies, run `lex-align compliance` (see *Cold-start compliance check* below).
+
+---
+
+## Cold-start compliance check
+
+Existing projects accumulate dependencies long before lex-align is added. The compliance check evaluates every entry already in `pyproject.toml` against the registry and license policy, then seeds the store accordingly:
+
+```bash
+lex-align compliance            # analyze + write
+lex-align compliance --dry-run  # analyze only
+```
+
+| Outcome | Behavior |
+|---|---|
+| **preferred** / **version-constrained** / unknown w/ permissive license | Accepted ADR is auto-written. |
+| **approved** (neutral) | Observed entry is created. The agent must promote it with rationale. |
+| **deprecated** / **banned** / version-violated / blocked license | Blocker. Nothing is written for any package while a blocker exists. |
+| Already covered by an accepted ADR | Skipped. The check is idempotent across re-runs. |
+
+Exit codes: `0` = passing, `1` = observed entries await promotion, `2` = blockers present.
+
+When observed entries remain, the command prints a ready-to-paste prompt that instructs an AI agent to analyze the codebase and run `lex-align promote <id>` for each one with derived rationale. Once every dependency has an accepted ADR and no blockers remain, compliance passes and you can rely on hook enforcement for new dependencies going forward.
 
 ---
 
@@ -150,6 +172,8 @@ lex-align registry check cryptography --version 41.0.0
 ### Manual commands
 
 ```bash
+lex-align compliance
+lex-align compliance --dry-run
 lex-align plan "add a background job queue for sending emails"
 lex-align propose --dependency redis --title "Use Redis for session storage" \
   --context "..." --decision "..." --consequences "..." --yes
