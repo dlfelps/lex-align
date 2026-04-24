@@ -140,11 +140,12 @@ When you encounter an OBSERVED entry for a dependency you are actively using:
 Run `{command} show <id>` before touching code governed by a decision. Do not
 repeat evaluation work already recorded in alternatives.
 
-IMPORTANT for AI agents: NEVER run `{command} propose` or `{command} promote`
-without supplying all required flags and `--yes`. These commands have interactive
-prompts that will hang a non-interactive session. Always use flags to provide
-every field. Run `{command} propose --help` or `{command} promote --help` to see
-the required flags, then pass `--yes` to skip all confirmation prompts.
+IMPORTANT for AI agents: when running `{command} propose` or
+`{command} promote`, pass `--yes` along with every required flag. When stdin is
+not a TTY (as in any agent session), these commands auto-enable `--yes` and
+will fast-fail with a clear error listing any missing flags — they will never
+hang on a prompt. Required flags for `propose --yes`: `--title`, `--context`,
+`--decision`, `--consequences`. Required for `promote --yes`: `--context`.
 """
 
 
@@ -167,8 +168,18 @@ def main() -> None:
     type=click.Path(exists=True, dir_okay=False),
     help="Path to an enterprise registry JSON file; recorded in .lex-align/config.json.",
 )
-def init(yes: bool, registry_path: Optional[str]) -> None:
-    """Initialize lex-align in the current repository."""
+@click.option(
+    "--no-compliance",
+    is_flag=True,
+    help="Skip the cold-start compliance check of existing pyproject.toml dependencies.",
+)
+def init(yes: bool, registry_path: Optional[str], no_compliance: bool) -> None:
+    """Initialize lex-align in the current repository.
+
+    After configuring hooks, if pyproject.toml has runtime dependencies they
+    are evaluated against the registry and seeded into the store. Pass
+    --no-compliance to defer this to an explicit `lex-align compliance` run.
+    """
     from .registry import Registry, save_config, load_config
 
     project_root = Path.cwd()
@@ -238,6 +249,35 @@ def init(yes: bool, registry_path: Optional[str]) -> None:
     if registry_msg:
         click.echo(registry_msg)
     click.echo(claude_md_msg)
+
+    # Cold-start compliance check: seed the store from existing dependencies so
+    # the hooks aren't installed against an empty store with a deps-laden
+    # pyproject. Opt out with --no-compliance.
+    pyproject = project_root / "pyproject.toml"
+    if not no_compliance and pyproject.exists():
+        from .reconciler import get_runtime_deps
+        deps = get_runtime_deps(pyproject)
+        if deps:
+            from . import compliance as compliance_mod
+            from .registry import load_registry
+            click.echo("")
+            click.echo(
+                f"Running compliance check on {len(deps)} existing runtime "
+                f"dependenc{'y' if len(deps) == 1 else 'ies'}..."
+            )
+            click.echo("")
+            registry = load_registry(project_root)
+            store = _make_store(project_root)
+            report = compliance_mod.run(
+                project_root, pyproject, store, registry, dry_run=False
+            )
+            click.echo(compliance_mod.format_report(report))
+            if report.blocked:
+                click.echo("")
+                click.echo(
+                    "Init completed, but compliance found blockers. Resolve them "
+                    "and re-run `lex-align compliance`."
+                )
 
 
 # ── show ──────────────────────────────────────────────────────────────────────
@@ -548,15 +588,29 @@ def propose(
                 relevant_decisions.append(d)
                 click.echo(f"Relevant decision: {d.id}: {d.title}")
 
+    # Non-TTY stdin is a hard signal that we're running under an agent; auto-enable
+    # --yes so we never hang on a click.prompt that has no reader.
+    if not yes and not sys.stdin.isatty():
+        yes = True
+        click.echo(
+            "lex-align: stdin is not a TTY; running non-interactively (--yes auto-enabled).",
+            err=True,
+        )
+
     if yes:
-        if not title:
-            raise click.UsageError("--title is required when using --yes.")
-        if not context_prose:
-            raise click.UsageError("--context is required when using --yes.")
-        if not decision_prose:
-            raise click.UsageError("--decision is required when using --yes.")
-        if not consequences_prose:
-            raise click.UsageError("--consequences is required when using --yes.")
+        missing = [
+            name for name, value in (
+                ("--title", title),
+                ("--context", context_prose),
+                ("--decision", decision_prose),
+                ("--consequences", consequences_prose),
+            ) if not value
+        ]
+        if missing:
+            raise click.UsageError(
+                f"Non-interactive propose requires: {', '.join(missing)}. "
+                "Pass every flag with --yes to avoid the interactive prompts."
+            )
         title_val = title
         confidence = Confidence(confidence_flag or "medium")
         tags_raw = tags or default_scope_tags
@@ -720,9 +774,19 @@ def promote(
 
     click.echo(f"Promoting {decision.id}: {decision.title}")
 
+    if not yes and not sys.stdin.isatty():
+        yes = True
+        click.echo(
+            "lex-align: stdin is not a TTY; running non-interactively (--yes auto-enabled).",
+            err=True,
+        )
+
     if yes:
         if not context_text:
-            raise click.UsageError("--context is required when using --yes.")
+            raise click.UsageError(
+                "Non-interactive promote requires --context. "
+                "Supply it along with --yes to skip the interactive prompts."
+            )
         confidence = Confidence(confidence_flag or "medium")
         tags_raw = tags if tags is not None else ",".join(decision.scope.tags)
         paths_raw = paths_flag if paths_flag is not None else ",".join(decision.scope.paths)
