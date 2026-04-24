@@ -60,6 +60,24 @@ def test_handle_session_start_reconciles_existing_deps(project_with_pyproject: P
         assert d.provenance is Provenance.RECONCILIATION
 
 
+def test_handle_session_start_surfaces_pending_promotions(project_with_pyproject: Path):
+    """Observed entries must appear in the brief as actionable tasks with a
+    runnable command template — no copy-paste from a separate compliance run."""
+    (project_with_pyproject / "pyproject.toml").write_text(
+        "[project]\ndependencies = ['redis>=5.0']\n"
+    )
+    brief = handle_session_start({"session_id": "abc"}, project_with_pyproject)
+    assert "PENDING PROMOTIONS" in brief
+    assert "lex-align promote" in brief
+    assert "--yes" in brief
+    assert "redis" in brief
+
+
+def test_handle_session_start_no_observed_no_pending_section(project_with_pyproject: Path):
+    brief = handle_session_start({"session_id": "abc"}, project_with_pyproject)
+    assert "PENDING PROMOTIONS" not in brief
+
+
 def test_handle_pre_tool_use_ignores_unrelated_paths(project_with_pyproject: Path):
     event = {
         "tool_name": "Edit",

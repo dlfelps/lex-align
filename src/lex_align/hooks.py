@@ -91,15 +91,23 @@ def _build_brief(
             lines.append(f"  {d.id}  {d.title}")
 
     if observed:
-        lines.append("\nOBSERVED (no rationale captured)")
+        lines.append("\nPENDING PROMOTIONS — observed entries awaiting rationale")
+        lines.append(
+            "For each entry below: inspect how the package is used (imports, "
+            "call sites), then run:"
+        )
+        lines.append(
+            '  lex-align promote <id> --context "..." --decision "..." '
+            '--consequences "..." --yes'
+        )
         for d in observed:
-            tag = "  [new: added by reconciliation]" if d.scope.tags and d.scope.tags[0] in new_observed else ""
-            lines.append(f"  {d.id}  {d.title}{tag}")
+            pkg = d.scope.tags[0] if d.scope.tags else d.title
+            new_tag = "  [new]" if d.scope.tags and d.scope.tags[0] in new_observed else ""
+            lines.append(f"  {d.id}  ({pkg}){new_tag}")
 
     lines.append("\nRun `lex-align show <id>` for full rationale and alternatives.")
     lines.append('Run `lex-align plan "<prompt>"` to get relevant context before starting a task.')
     lines.append("Run `lex-align propose` to record a new decision or supersession.")
-    lines.append("Run `lex-align promote <id>` to capture rationale for an observed entry.")
     return "\n".join(lines)
 
 

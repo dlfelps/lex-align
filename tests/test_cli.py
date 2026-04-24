@@ -62,16 +62,51 @@ def test_init_writes_gitignore_entries(runner: CliRunner, tmp_path: Path, mocker
         assert ".lex-align/license-cache.json" in content
 
 
-def test_init_does_not_seed_from_pyproject(runner: CliRunner, tmp_path: Path, mocker):
+def test_init_runs_compliance_by_default(runner: CliRunner, tmp_path: Path, mocker):
+    """With no registry, init seeds observed entries for existing deps."""
     mocker.patch("lex_align.cli._FIRST_RUN_MARKER", tmp_path / ".marker")
     with runner.isolated_filesystem(temp_dir=tmp_path) as td:
         Path(td, "pyproject.toml").write_text(
             '[project]\ndependencies = ["fastapi>=0.100"]\n'
         )
         result = runner.invoke(main, ["init", "--yes"])
-        assert result.exit_code == 0
+        assert result.exit_code == 0, result.output
+        store = DecisionStore(Path(td, ".lex-align", "decisions"))
+        decisions = store.load_all()
+        assert len(decisions) == 1
+        assert decisions[0].status.value == "observed"
+        assert "fastapi" in decisions[0].scope.tags
+
+
+def test_init_no_compliance_skips_seeding(runner: CliRunner, tmp_path: Path, mocker):
+    mocker.patch("lex_align.cli._FIRST_RUN_MARKER", tmp_path / ".marker")
+    with runner.isolated_filesystem(temp_dir=tmp_path) as td:
+        Path(td, "pyproject.toml").write_text(
+            '[project]\ndependencies = ["fastapi>=0.100"]\n'
+        )
+        result = runner.invoke(main, ["init", "--yes", "--no-compliance"])
+        assert result.exit_code == 0, result.output
         store = DecisionStore(Path(td, ".lex-align", "decisions"))
         assert store.load_all() == []
+
+
+def test_init_compliance_with_registry_seeds_accepted(
+    runner: CliRunner, tmp_path: Path, mocker, sample_registry_file: Path
+):
+    mocker.patch("lex_align.cli._FIRST_RUN_MARKER", tmp_path / ".marker")
+    with runner.isolated_filesystem(temp_dir=tmp_path) as td:
+        Path(td, "pyproject.toml").write_text(
+            '[project]\ndependencies = ["httpx>=0.28.0"]\n'
+        )
+        result = runner.invoke(
+            main, ["init", "--yes", "--registry", str(sample_registry_file)]
+        )
+        assert result.exit_code == 0, result.output
+        store = DecisionStore(Path(td, ".lex-align", "decisions"))
+        decisions = store.load_all()
+        assert len(decisions) == 1
+        assert decisions[0].status.value == "accepted"
+        assert "httpx" in decisions[0].scope.tags
 
 
 def test_init_with_registry_records_path(runner: CliRunner, tmp_path: Path, mocker, sample_registry_file: Path):
@@ -175,6 +210,33 @@ def test_propose_requires_title(runner: CliRunner, initialized_project: Path, mo
     assert "title" in result.output.lower()
 
 
+def test_propose_lists_all_missing_flags_in_one_error(
+    runner: CliRunner, initialized_project: Path, mocker,
+):
+    mocker.patch("lex_align.cli._find_project_root", return_value=initialized_project)
+    result = runner.invoke(main, ["propose", "--yes"])
+    assert result.exit_code != 0
+    # All four required flags should be named — no more whack-a-mole.
+    lower = result.output.lower()
+    assert "--title" in lower
+    assert "--context" in lower
+    assert "--decision" in lower
+    assert "--consequences" in lower
+
+
+def test_propose_without_yes_on_non_tty_fails_fast(
+    runner: CliRunner, initialized_project: Path, mocker,
+):
+    """Non-TTY stdin should auto-enable --yes and produce a clear usage error,
+    never hang on click.prompt."""
+    mocker.patch("lex_align.cli._find_project_root", return_value=initialized_project)
+    result = runner.invoke(main, ["propose"])  # no --yes, no flags
+    assert result.exit_code != 0
+    assert "non-interactive" in result.output.lower()
+    assert "stdin is not a tty" in (result.output + result.stderr).lower() or \
+           "--yes auto-enabled" in (result.output + result.stderr).lower()
+
+
 def test_propose_refuses_banned_dependency(
     runner: CliRunner, initialized_project: Path, sample_registry_file: Path, mocker
 ):
@@ -259,6 +321,19 @@ def test_promote_rejects_non_observed(
         "--yes",
     ])
     assert result.exit_code != 0
+
+
+def test_promote_without_yes_on_non_tty_fails_fast(
+    runner: CliRunner, initialized_project: Path, store_in_project: DecisionStore,
+    observed_decision, mocker,
+):
+    """Non-TTY stdin should auto-enable --yes and surface a usage error for
+    missing --context, never hang on click.prompt."""
+    store_in_project.save(observed_decision)
+    mocker.patch("lex_align.cli._find_project_root", return_value=initialized_project)
+    result = runner.invoke(main, ["promote", "ADR-0002"])  # no --yes, no --context
+    assert result.exit_code != 0
+    assert "--context" in result.output or "context" in result.output.lower()
 
 
 # ── registry ────────────────────────────────────────────────────────────────

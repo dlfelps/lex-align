@@ -65,11 +65,12 @@ lex-align init
 lex-align init --registry path/to/registry.json
 ```
 
-`init` does three things:
+`init` does four things:
 
 1. Creates `.lex-align/` with `decisions/` and `sessions/` subdirectories.
 2. Records the registry file location (if provided) in `.lex-align/config.json`.
 3. Writes hooks into `.claude/settings.json` so Claude Code automatically injects the architecture brief at session start and enforces the registry on `pyproject.toml` edits.
+4. Runs the cold-start compliance check against any existing `pyproject.toml` dependencies (unless you pass `--no-compliance`). See *Cold-start compliance check* below for bucketing details and exit-code semantics when invoked on its own.
 
 It also adds `.lex-align/sessions/` and `.lex-align/license-cache.json` to `.gitignore` so raw session logs and transient license lookups stay local while decisions travel with the repo.
 
@@ -79,8 +80,6 @@ It also adds `.lex-align/sessions/` and `.lex-align/license-cache.json` to `.git
 git add .lex-align/ .claude/settings.json .gitignore
 git commit -m "Initialize lex-align"
 ```
-
-The store starts empty — `init` does not seed observed entries from existing dependencies. To bootstrap a project that already has dependencies, run `lex-align compliance` (see *Cold-start compliance check* below).
 
 ---
 
@@ -102,7 +101,7 @@ lex-align compliance --dry-run  # analyze only
 
 Exit codes: `0` = passing, `1` = observed entries await promotion, `2` = blockers present.
 
-When observed entries remain, the command prints a ready-to-paste prompt that instructs an AI agent to analyze the codebase and run `lex-align promote <id>` for each one with derived rationale. Once every dependency has an accepted ADR and no blockers remain, compliance passes and you can rely on hook enforcement for new dependencies going forward.
+When observed entries remain, they are surfaced directly in the `SessionStart` architecture brief as a **PENDING PROMOTIONS** block with a ready-to-run `lex-align promote` command template — the agent picks up the queue without any copy-paste. The compliance CLI also prints an equivalent prompt for human operators reading the output. Once every dependency has an accepted ADR and no blockers remain, compliance passes and you can rely on hook enforcement for new dependencies going forward.
 
 ---
 
