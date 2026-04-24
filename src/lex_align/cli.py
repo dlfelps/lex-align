@@ -868,24 +868,6 @@ def promote(
     click.echo(f"\nPromoted {decision.id} to accepted. Written: {path}")
 
 
-# ── rebuild-index ─────────────────────────────────────────────────────────────
-
-@main.command("rebuild-index")
-def rebuild_index() -> None:
-    """Rebuild the inverted index from all decision files."""
-    project_root = _find_project_root()
-    _require_initialized(project_root)
-    store = _make_store(project_root)
-
-    logger = _get_logger(project_root)
-    if logger:
-        logger.log("maintenance", "rebuild-index")
-
-    store.rebuild_index()
-    count = len(store.load_all())
-    click.echo(f"Index rebuilt from {count} decision {'file' if count == 1 else 'files'}.")
-
-
 # ── report ────────────────────────────────────────────────────────────────────
 
 @main.command()
@@ -954,28 +936,48 @@ def compliance(dry_run: bool, registry_path: Optional[str]) -> None:
 # ── doctor ────────────────────────────────────────────────────────────────────
 
 @main.command()
-@click.option("--repair", is_flag=True, help="Repair missing or outdated hook configuration.")
+@click.option(
+    "--repair",
+    is_flag=True,
+    help="Repair missing hook configuration and/or rebuild a stale decision index.",
+)
 def doctor(repair: bool) -> None:
-    """Check hook configuration health."""
+    """Check hook configuration and decision-index health."""
     project_root = _find_project_root()
     _require_initialized(project_root)
+    store = _make_store(project_root)
 
-    status = check_hooks_present(project_root)
-    all_ok = all(status.values())
+    hook_status = check_hooks_present(project_root)
+    hooks_ok = all(hook_status.values())
+    index_ok = store.index_is_healthy()
 
-    for event, present in status.items():
+    for event, present in hook_status.items():
         mark = "✓" if present else "✗"
         click.echo(f"  {mark} {event} hook")
+    click.echo(f"  {'✓' if index_ok else '✗'} decision index")
 
-    if all_ok:
-        click.echo("Hook configuration is healthy.")
-    else:
+    if hooks_ok and index_ok:
+        click.echo("Configuration is healthy.")
+        return
+
+    if not hooks_ok:
         click.echo("Some hooks are missing or misconfigured.")
-        if repair:
+    if not index_ok:
+        click.echo("Decision index is missing or out of sync with decision files.")
+
+    if repair:
+        if not hooks_ok:
             add_lex_hooks(project_root)
             click.echo("Repaired hook configuration.")
-        else:
-            click.echo("Run `lex-align doctor --repair` to fix.")
+        if not index_ok:
+            store.rebuild_index()
+            count = len(store.load_all())
+            click.echo(
+                f"Rebuilt index from {count} decision "
+                f"{'file' if count == 1 else 'files'}."
+            )
+    else:
+        click.echo("Run `lex-align doctor --repair` to fix.")
 
 
 # ── uninstall ─────────────────────────────────────────────────────────────────
@@ -1090,27 +1092,10 @@ def registry_check(package: str, version: Optional[str], registry_path: Optional
         click.echo("(Package is not in the registry; license policy will apply.)")
 
 
-# ── hook subcommands ──────────────────────────────────────────────────────────
+# ── hook dispatch (hidden) ────────────────────────────────────────────────────
 
-@main.command("session-start", hidden=True)
-def session_start() -> None:
-    """Hook: runs at session start."""
-    run_hook("session-start")
-
-
-@main.command("pre-tool-use", hidden=True)
-def pre_tool_use() -> None:
-    """Hook: runs before tool use."""
-    run_hook("pre-tool-use")
-
-
-@main.command("post-tool-use", hidden=True)
-def post_tool_use() -> None:
-    """Hook: runs after tool use."""
-    run_hook("post-tool-use")
-
-
-@main.command("session-end", hidden=True)
-def session_end() -> None:
-    """Hook: runs at session end."""
-    run_hook("session-end")
+@main.command(hidden=True)
+@click.argument("name")
+def hook(name: str) -> None:
+    """Hook dispatch entry point invoked by the Claude Code wrapper script."""
+    run_hook(name)

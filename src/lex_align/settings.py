@@ -68,18 +68,18 @@ main()
 
 _HOOK_EVENTS = {
     "SessionStart": {
-        "subcommand": "session-start",
+        "subcommand": "hook session-start",
     },
     "PreToolUse": {
-        "subcommand": "pre-tool-use",
+        "subcommand": "hook pre-tool-use",
         "matcher": "Edit|Write|MultiEdit",
     },
     "PostToolUse": {
-        "subcommand": "post-tool-use",
+        "subcommand": "hook post-tool-use",
         "matcher": "Edit|Write|MultiEdit",
     },
     "SessionEnd": {
-        "subcommand": "session-end",
+        "subcommand": "hook session-end",
     },
 }
 

@@ -364,7 +364,7 @@ def test_registry_check_unknown(runner: CliRunner, initialized_project: Path, sa
     assert "unknown" in result.output
 
 
-# ── history, check-constraint, rebuild-index ──────────────────────────────────
+# ── history, check-constraint, doctor ─────────────────────────────────────────
 
 def test_history_returns_decisions_by_tag(
     runner: CliRunner, initialized_project: Path, store_in_project: DecisionStore, mocker
@@ -384,15 +384,23 @@ def test_history_returns_decisions_by_tag(
     assert "ADR-0001" in result.output
 
 
-def test_rebuild_index(
+def test_doctor_repair_rebuilds_stale_index(
     runner: CliRunner, initialized_project: Path, store_in_project: DecisionStore,
     sample_decision, mocker,
 ):
     store_in_project.save(sample_decision)
-    # Corrupt the index
+    # Corrupt the index so it no longer reflects the decision on disk.
     (initialized_project / ".lex-align" / "index.json").write_text("{}")
     mocker.patch("lex_align.cli._find_project_root", return_value=initialized_project)
-    result = runner.invoke(main, ["rebuild-index"])
+
+    # Without --repair, doctor reports the problem but does not fix it.
+    result = runner.invoke(main, ["doctor"])
+    assert result.exit_code == 0
+    assert "decision index" in result.output
+    idx = json.loads((initialized_project / ".lex-align" / "index.json").read_text())
+    assert idx == {}
+
+    result = runner.invoke(main, ["doctor", "--repair"])
     assert result.exit_code == 0
     idx = json.loads((initialized_project / ".lex-align" / "index.json").read_text())
     assert any(sample_decision.id in ids for ids in idx.values())
