@@ -407,7 +407,7 @@ function renderMeta() {
 function renderPending() {
   const panel = document.getElementById("pending-panel");
   const tbody = document.getElementById("pending-rows");
-  const registered = new Set(Object.keys(registry.packages));
+  const registered = new Set(Object.keys(registry.packages).map(normalizeName));
   const visible = pendingItems.filter(p =>
     !registered.has(p.normalized_name) && !dismissedKeys.has(p.normalized_name)
   );
@@ -671,9 +671,10 @@ document.getElementById("pending-rows").addEventListener("click", (e) => {
   const dismissKey = e.target.dataset && e.target.dataset.dismissPending;
   if (addPkg) {
     // Open the standard "new package" dialog with the name pre-filled.
+    const normalizedPkg = normalizeName(addPkg);
     openDialog(null);
     document.getElementById("dialog-title").textContent = `Add ${addPkg} to registry`;
-    document.getElementById("f-name").value = addPkg;
+    document.getElementById("f-name").value = normalizedPkg;
   } else if (dismissKey) {
     dismissedKeys.add(dismissKey);
     rerender();
