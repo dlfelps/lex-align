@@ -1,0 +1,33 @@
+services:
+  lexalign-server:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: lexalign-server:2.2
+    # Single-user mode default: bind to 127.0.0.1 only. Override the port
+    # mapping (and set AUTH_ENABLED=true in env) for organization deployments.
+    ports:
+      - "127.0.0.1:8765:8765"
+    environment:
+      AUTH_ENABLED: "false"
+      BIND_HOST: "0.0.0.0"
+      BIND_PORT: "8765"
+      REDIS_URL: "redis://redis:6379/0"
+      DATABASE_PATH: "/var/lib/lexalign/lexalign.sqlite"
+      REGISTRY_PATH: "/etc/lexalign/registry.json"
+    volumes:
+      - lexalign-data:/var/lib/lexalign
+      - ./registry.json:/etc/lexalign/registry.json:ro
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    # No host port — Redis is internal to the compose network.
+    expose:
+      - "6379"
+
+volumes:
+  lexalign-data:

@@ -32,6 +32,7 @@ GLOBAL_POLICY_ALLOWED_FIELDS = {
     "hard_ban_licenses",
     "require_human_review_licenses",
     "unknown_license_policy",
+    "cve_threshold",
 }
 
 
@@ -77,6 +78,13 @@ def validate_registry(doc: dict) -> dict:
             f"got {unknown_policy!r}"
         )
 
+    cve_threshold = gp.get("cve_threshold", 0.9)
+    if not isinstance(cve_threshold, (int, float)) or isinstance(cve_threshold, bool):
+        raise ValidationError("cve_threshold must be a number between 0 and 1")
+    cve_threshold = float(cve_threshold)
+    if not (0.0 <= cve_threshold <= 1.0):
+        raise ValidationError("cve_threshold must be between 0 and 1")
+
     packages = doc.get("packages") or {}
     if not isinstance(packages, dict):
         raise ValidationError("packages must be a mapping keyed by package name")
@@ -93,6 +101,7 @@ def validate_registry(doc: dict) -> dict:
             "hard_ban_licenses": hard_ban,
             "require_human_review_licenses": review,
             "unknown_license_policy": unknown_policy,
+            "cve_threshold": cve_threshold,
         },
         "packages": compiled_packages,
     }
