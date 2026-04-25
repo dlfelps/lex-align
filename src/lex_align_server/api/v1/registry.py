@@ -1,30 +1,23 @@
 """Registry endpoints used by the dashboard workshop.
 
 - GET  /registry            returns the live registry as JSON.
+- GET  /registry/pending    returns PENDING_REVIEW approval requests for
+                            packages not in the loaded registry.
 - POST /registry/parse-yaml validates user-supplied YAML against the
-  same schema as tools/compile_registry.py and returns it as JSON so
-  the browser-side workshop can resume editing an existing file.
+  same schema the CLI compiler uses and returns it as JSON so the
+  browser-side workshop can resume editing an existing file.
 
-Neither endpoint mutates server state; the workshop's edits live only in
-the browser and are exported as YAML on the client.
+These endpoints don't mutate server state; the workshop's edits live
+only in the browser and are exported as YAML on the client.
 """
 
 from __future__ import annotations
-
-import sys
-from pathlib import Path
 
 import yaml
 from fastapi import APIRouter, HTTPException, Request, status
 from pydantic import BaseModel, Field
 
-
-# tools/compile_registry.py is not packaged; import it lazily by path.
-_REPO_ROOT = Path(__file__).resolve().parents[4]
-_TOOLS_DIR = _REPO_ROOT / "tools"
-if str(_TOOLS_DIR) not in sys.path:
-    sys.path.insert(0, str(_TOOLS_DIR))
-import compile_registry  # noqa: E402  (path-based import)
+from ...registry_schema import ValidationError, validate_registry
 
 
 router = APIRouter()
@@ -105,8 +98,8 @@ async def parse_yaml(body: YamlBody) -> dict:
             detail=f"YAML parse error: {exc}",
         )
     try:
-        compiled = compile_registry.validate_registry(doc or {})
-    except compile_registry.ValidationError as exc:
+        compiled = validate_registry(doc or {})
+    except ValidationError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(exc),
