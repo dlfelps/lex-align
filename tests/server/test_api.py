@@ -14,6 +14,7 @@ from lex_align_server.api.v1 import (
     approval_requests as approval_router,
     evaluate as evaluate_router,
     health as health_router,
+    registry as registry_router,
     reports as reports_router,
 )
 from lex_align_server.audit import AuditStore
@@ -91,6 +92,7 @@ def _build_app(tmp_path, *, auth_enabled: bool = False) -> FastAPI:
     app.include_router(evaluate_router.router, prefix="/api/v1")
     app.include_router(approval_router.router, prefix="/api/v1")
     app.include_router(reports_router.router, prefix="/api/v1")
+    app.include_router(registry_router.router, prefix="/api/v1")
     app.include_router(health_router.router, prefix="/api/v1")
     app.include_router(dashboards_router.router)
     return app
@@ -159,17 +161,58 @@ def test_health_endpoint(tmp_path):
         assert body["registry_loaded"] is True
 
 
-def test_dashboards_404_when_auth_disabled(tmp_path):
+def test_dashboards_render_when_auth_disabled(tmp_path):
+    """Dashboards are now available in single-user mode too."""
     with TestClient(_build_app(tmp_path)) as client:
-        r = client.get("/dashboard/security")
-        assert r.status_code == 404
-
-
-def test_dashboards_render_when_auth_enabled(tmp_path):
-    with TestClient(_build_app(tmp_path, auth_enabled=True)) as client:
+        assert client.get("/dashboard/security").status_code == 200
+        assert client.get("/dashboard/legal").status_code == 200
         r = client.get("/dashboard/registry")
         assert r.status_code == 200
         assert "Registry workshop" in r.text
+
+
+def test_registry_endpoint_returns_yaml_shape(tmp_path):
+    with TestClient(_build_app(tmp_path)) as client:
+        r = client.get("/api/v1/registry")
+        assert r.status_code == 200
+        body = r.json()
+        assert body["version"] == "1"
+        assert "global_policies" in body
+        assert body["packages"]["httpx"]["status"] == "preferred"
+        assert body["packages"]["requests"]["replacement"] == "httpx"
+
+
+def test_parse_yaml_accepts_valid_document(tmp_path):
+    yaml_text = """
+version: "1.0"
+global_policies:
+  auto_approve_licenses: [MIT]
+  cve_threshold: 0.8
+packages:
+  httpx:
+    status: preferred
+    reason: ok
+"""
+    with TestClient(_build_app(tmp_path)) as client:
+        r = client.post("/api/v1/registry/parse-yaml", json={"yaml_text": yaml_text})
+        assert r.status_code == 200
+        body = r.json()
+        assert body["version"] == "1.0"
+        assert body["packages"]["httpx"]["status"] == "preferred"
+
+
+def test_parse_yaml_rejects_invalid_document(tmp_path):
+    # `deprecated` without a replacement must fail validation.
+    yaml_text = """
+version: "1"
+packages:
+  requests:
+    status: deprecated
+"""
+    with TestClient(_build_app(tmp_path)) as client:
+        r = client.post("/api/v1/registry/parse-yaml", json={"yaml_text": yaml_text})
+        assert r.status_code == 400
+        assert "replacement" in r.json()["detail"]
 
 
 def test_legal_and_security_reports_separate_categories(tmp_path):
