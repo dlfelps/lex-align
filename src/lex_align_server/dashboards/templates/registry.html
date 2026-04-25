@@ -105,6 +105,27 @@
     background: #fef3c7; color: #92400e; font-size: 0.8rem; font-weight: 600;
   }
   .dirty-marker.visible { display: inline-block; }
+
+  /* Pending requests panel */
+  .pending-panel {
+    margin: 1rem 0; border: 1px solid #fbbf24; border-radius: 6px;
+    background: #fffbeb;
+  }
+  .pending-panel.empty { display: none; }
+  .pending-panel header {
+    padding: 0.5rem 0.8rem; font-weight: 600;
+    border-bottom: 1px solid #fde68a; color: #78350f;
+  }
+  .pending-panel header .count {
+    background: #d97706; color: #fff; padding: 0 0.5rem;
+    border-radius: 999px; font-size: 0.8rem; margin-left: 0.4rem;
+  }
+  .pending-panel table { background: transparent; }
+  .pending-panel th { background: transparent; cursor: default; }
+  .pending-panel td { border-bottom: 1px solid #fde68a; }
+  .pending-panel tr:last-child td { border-bottom: none; }
+  .pending-panel .rationale { color: #78350f; font-size: 0.9rem; }
+  .pending-panel .meta-cell { color: var(--muted); font-size: 0.85rem; white-space: nowrap; }
 </style>
 </head>
 <body>
@@ -149,6 +170,27 @@
     </div>
   </div>
 </details>
+
+<section id="pending-panel" class="pending-panel empty">
+  <header>
+    Pending approval requests<span class="count" id="pending-count">0</span>
+    <span style="font-weight: normal; font-size: 0.85rem; margin-left: 0.4rem; color: var(--muted);">
+      — packages developers asked for that aren't in the registry yet
+    </span>
+  </header>
+  <table>
+    <thead>
+      <tr>
+        <th>Package</th>
+        <th>Latest rationale</th>
+        <th>Requests</th>
+        <th>Last requested</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody id="pending-rows"></tbody>
+  </table>
+</section>
 
 <div class="toolbar">
   <input type="search" id="search" placeholder="Filter by name or status…">
@@ -228,6 +270,12 @@ let original = null;       // last loaded snapshot, for "discard" + dirty detect
 let sortField = "name";
 let sortDir = 1;           // 1 asc, -1 desc
 let editingName = null;    // null = create, else editing existing
+let pendingItems = [];     // pending approval requests from /api/v1/registry/pending
+let dismissedKeys = new Set();  // normalized names dismissed in this session
+
+function normalizeName(s) {
+  return s.trim().toLowerCase().replace(/-/g, "_").replace(/\./g, "_");
+}
 
 // --- helpers ----------------------------------------------------------------
 
@@ -356,10 +404,52 @@ function renderMeta() {
     `Version ${registry.version} · ${count} package${count === 1 ? "" : "s"}`;
 }
 
+function renderPending() {
+  const panel = document.getElementById("pending-panel");
+  const tbody = document.getElementById("pending-rows");
+  const registered = new Set(Object.keys(registry.packages));
+  const visible = pendingItems.filter(p =>
+    !registered.has(p.normalized_name) && !dismissedKeys.has(p.normalized_name)
+  );
+  document.getElementById("pending-count").textContent = visible.length;
+  panel.classList.toggle("empty", visible.length === 0);
+  tbody.innerHTML = "";
+  for (const p of visible) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td><strong></strong></td>
+      <td class="rationale"></td>
+      <td></td>
+      <td class="meta-cell"></td>
+      <td class="row-actions">
+        <button class="primary" data-add-pending="">Add to registry…</button>
+        <button data-dismiss-pending="">Dismiss</button>
+      </td>
+    `;
+    tr.children[0].querySelector("strong").textContent = p.package;
+    tr.children[1].textContent = p.latest_rationale || "";
+    tr.children[2].textContent = p.request_count;
+    tr.children[3].textContent = formatTs(p.latest_ts);
+    tr.querySelector("[data-add-pending]").dataset.addPending = p.package;
+    tr.querySelector("[data-dismiss-pending]").dataset.dismissPending = p.normalized_name;
+    tbody.appendChild(tr);
+  }
+}
+
+function formatTs(iso) {
+  if (!iso) return "";
+  try {
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return iso;
+    return d.toISOString().replace("T", " ").slice(0, 16) + " UTC";
+  } catch { return iso; }
+}
+
 function rerender() {
   renderMeta();
   renderPolicies();
   renderRows();
+  renderPending();
   updateDirtyMarker();
 }
 
@@ -517,9 +607,18 @@ async function importYaml(file) {
 }
 
 async function loadFromServer() {
-  const r = await fetch("/api/v1/registry");
-  registry = await r.json();
+  const [regResp, pendResp] = await Promise.all([
+    fetch("/api/v1/registry"),
+    fetch("/api/v1/registry/pending"),
+  ]);
+  registry = await regResp.json();
   original = clone(registry);
+  if (pendResp.ok) {
+    const body = await pendResp.json();
+    pendingItems = body.items || [];
+  } else {
+    pendingItems = [];
+  }
   rerender();
 }
 
@@ -564,6 +663,20 @@ document.getElementById("rows").addEventListener("click", (e) => {
       rerender();
       toast(`Deleted ${delName}`);
     }
+  }
+});
+
+document.getElementById("pending-rows").addEventListener("click", (e) => {
+  const addPkg = e.target.dataset && e.target.dataset.addPending;
+  const dismissKey = e.target.dataset && e.target.dataset.dismissPending;
+  if (addPkg) {
+    // Open the standard "new package" dialog with the name pre-filled.
+    openDialog(null);
+    document.getElementById("dialog-title").textContent = `Add ${addPkg} to registry`;
+    document.getElementById("f-name").value = addPkg;
+  } else if (dismissKey) {
+    dismissedKeys.add(dismissKey);
+    rerender();
   }
 });
 

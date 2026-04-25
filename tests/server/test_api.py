@@ -201,6 +201,36 @@ packages:
         assert body["packages"]["httpx"]["status"] == "preferred"
 
 
+def test_pending_endpoint_filters_registered_and_groups(tmp_path):
+    """Pending requests for unregistered packages are surfaced; requests
+    for packages already in the registry are filtered out; multiple
+    requests for the same package collapse into one row."""
+    with TestClient(_build_app(tmp_path)) as client:
+        headers = {"X-LexAlign-Project": "demo"}
+        # Two pending requests for numpy across different requesters by way
+        # of different projects (the dedupe index is per requester).
+        client.post("/api/v1/approval-requests",
+                    json={"package": "numpy", "rationale": "math"},
+                    headers={"X-LexAlign-Project": "p1"})
+        client.post("/api/v1/approval-requests",
+                    json={"package": "numpy", "rationale": "more"},
+                    headers={"X-LexAlign-Project": "p2"})
+        # A request for httpx, which IS in the registry — must be filtered out.
+        client.post("/api/v1/approval-requests",
+                    json={"package": "httpx", "rationale": "already in"},
+                    headers=headers)
+        # An unrelated pending request.
+        client.post("/api/v1/approval-requests",
+                    json={"package": "scipy", "rationale": "science"},
+                    headers=headers)
+
+        r = client.get("/api/v1/registry/pending")
+        assert r.status_code == 200
+        items = {i["package"]: i for i in r.json()["items"]}
+        assert set(items) == {"numpy", "scipy"}
+        assert items["numpy"]["request_count"] == 2
+
+
 def test_parse_yaml_rejects_invalid_document(tmp_path):
     # `deprecated` without a replacement must fail validation.
     yaml_text = """
