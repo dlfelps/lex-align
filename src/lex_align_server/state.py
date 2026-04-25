@@ -6,7 +6,7 @@ the cache, audit log, or registry got built.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional
 
 import httpx
@@ -24,3 +24,4 @@ class AppState:
     audit: AuditStore
     http: httpx.AsyncClient
     registry: Optional[Registry]
+    accepted_packages: set[str] = field(default_factory=set)
