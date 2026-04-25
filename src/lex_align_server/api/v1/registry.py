@@ -76,16 +76,30 @@ async def get_registry(request: Request) -> dict:
 async def pending_requests(request: Request) -> dict:
     """Pending approval requests for packages not yet in the live registry.
 
-    Used by the dashboard to surface a triage queue. Items already present
-    in the loaded registry are filtered out so resolved requests don't
-    re-appear after the next compile/redeploy.
+    Filters out packages already in the loaded registry and packages
+    accepted via the dashboard in this server session. Accepted packages
+    reappear if the server restarts without the updated registry.
     """
     state = request.app.state.lex
     grouped = await state.audit.list_pending_by_package()
+    registered: set[str] = set()
     if state.registry is not None:
         registered = set(state.registry.packages.keys())
-        grouped = [g for g in grouped if g["normalized_name"] not in registered]
+    suppress = registered | state.accepted_packages
+    grouped = [g for g in grouped if g["normalized_name"] not in suppress]
     return {"items": grouped}
+
+
+@router.post("/registry/pending/{normalized_name}/accept", status_code=200)
+async def accept_pending(normalized_name: str, request: Request) -> dict:
+    """Mark a pending package as accepted in this server session.
+
+    Does not modify the registry file — the operator still needs to export
+    the YAML and redeploy. If the server restarts without the updated
+    registry the package will reappear in the pending panel.
+    """
+    request.app.state.lex.accepted_packages.add(normalized_name)
+    return {"accepted": normalized_name}
 
 
 @router.post("/registry/parse-yaml")

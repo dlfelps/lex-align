@@ -269,8 +269,9 @@ let registry = null;       // current working copy { version, global_policies, p
 let original = null;       // last loaded snapshot, for "discard" + dirty detection
 let sortField = "name";
 let sortDir = 1;           // 1 asc, -1 desc
-let editingName = null;    // null = create, else editing existing
-let pendingItems = [];     // pending approval requests from /api/v1/registry/pending
+let editingName = null;         // null = create, else editing existing
+let pendingNormalizedName = null; // set when dialog opened from pending panel
+let pendingItems = [];          // pending approval requests from /api/v1/registry/pending
 let dismissedKeys = new Set();  // normalized names dismissed in this session
 
 function normalizeName(s) {
@@ -457,6 +458,7 @@ function rerender() {
 
 function openDialog(name) {
   editingName = name;
+  pendingNormalizedName = null;
   const dlg = document.getElementById("edit-dialog");
   document.getElementById("dialog-title").textContent =
     name === null ? "Add package" : `Edit ${name}`;
@@ -507,9 +509,14 @@ function saveDialog(ev) {
   }
 
   registry.packages[name] = rule;
+  const acceptKey = pendingNormalizedName;
   closeDialog();
   rerender();
   toast(editingName === null ? `Added ${name}` : `Updated ${name}`);
+  if (acceptKey) {
+    fetch(`/api/v1/registry/pending/${encodeURIComponent(acceptKey)}/accept`, { method: "POST" })
+      .catch(() => {});  // fire-and-forget; UI already updated
+  }
 }
 
 // --- YAML emit (small dialect-specific writer) -----------------------------
@@ -673,6 +680,7 @@ document.getElementById("pending-rows").addEventListener("click", (e) => {
     // Open the standard "new package" dialog with the name pre-filled.
     const normalizedPkg = normalizeName(addPkg);
     openDialog(null);
+    pendingNormalizedName = normalizedPkg;
     document.getElementById("dialog-title").textContent = `Add ${addPkg} to registry`;
     document.getElementById("f-name").value = normalizedPkg;
   } else if (dismissKey) {
