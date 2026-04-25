@@ -269,6 +269,49 @@ class AuditStore:
             await cur.close()
         return rows
 
+    async def list_pending_by_package(self) -> list[dict]:
+        """All PENDING_REVIEW approval requests grouped by package.
+
+        The dashboard uses this to surface "things developers asked for" as a
+        triage queue. Multiple requests for the same package (across
+        projects/requesters) collapse into a single row carrying the count,
+        the most recent rationale, and the most recent timestamp. Callers
+        are expected to further filter against the live registry.
+        """
+        # Imported lazily to avoid a circular import at module load.
+        from .registry import normalize_name
+
+        async with aiosqlite.connect(self._db_path) as db:
+            db.row_factory = aiosqlite.Row
+            cur = await db.execute(
+                """SELECT package, rationale, project, requester, ts
+                   FROM approval_requests
+                   WHERE status = ?
+                   ORDER BY ts DESC""",
+                (APPROVAL_PENDING,),
+            )
+            rows = [dict(r) for r in await cur.fetchall()]
+            await cur.close()
+
+        grouped: dict[str, dict] = {}
+        for r in rows:
+            key = normalize_name(r["package"])
+            entry = grouped.get(key)
+            if entry is None:
+                grouped[key] = {
+                    "package": r["package"],
+                    "normalized_name": key,
+                    "latest_rationale": r["rationale"],
+                    "latest_ts": r["ts"],
+                    "latest_project": r["project"],
+                    "latest_requester": r["requester"],
+                    "request_count": 1,
+                }
+            else:
+                entry["request_count"] += 1
+                # Rows are ordered DESC by ts so the first one wins for "latest".
+        return list(grouped.values())
+
     async def projects_summary(self) -> list[dict]:
         async with aiosqlite.connect(self._db_path) as db:
             db.row_factory = aiosqlite.Row
