@@ -25,9 +25,21 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
+    # RDB snapshots persisted to a named volume so the license/CVE cache
+    # survives container restarts. AOF is intentionally omitted — this is
+    # a cache and rebuilds itself from PyPI/OSV on miss.
+    command:
+      - redis-server
+      - --save
+      - "3600 1 300 100 60 10000"
+      - --dir
+      - /data
+    volumes:
+      - lexalign-redis:/data
     # No host port — Redis is internal to the compose network.
     expose:
       - "6379"
 
 volumes:
   lexalign-data:
+  lexalign-redis:
