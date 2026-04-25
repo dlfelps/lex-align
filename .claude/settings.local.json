@@ -16,7 +16,8 @@
       "Bash(.venv/Scripts/adr-agent promote *)",
       "Bash(.venv/Scripts/adr-agent rebuild-index *)",
       "Bash(.venv/Scripts/adr-agent show *)",
-      "Bash(python *)"
+      "Bash(python *)",
+      "Bash(git pull *)"
     ]
   }
 }
