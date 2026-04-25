@@ -54,7 +54,22 @@ def handle_session_start(event: dict, project_root: Path, config: ClientConfig) 
         )
     except Exception as exc:
         lines.append(f"Health: unreachable ({exc.__class__.__name__})")
-    lines.append("Edits to pyproject.toml will be evaluated against the registry.")
+    lines += [
+        "",
+        "## Usage rules (lex-align)",
+        "Before adding or bumping any runtime dependency, run:",
+        "  lex-align-client check --package <name> [--version <v>]",
+        "",
+        "Verdicts:",
+        "  ALLOWED             — proceed.",
+        "  PROVISIONALLY_ALLOWED — proceed, then run:",
+        "    lex-align-client request-approval --package <name> --rationale \"<why>\"",
+        "  DENIED              — do not add the package; use the replacement if given.",
+        "",
+        "The PreToolUse hook enforces this automatically on every pyproject.toml edit.",
+        "The git pre-commit hook re-checks all runtime deps on every commit.",
+        "Never bypass a DENIED verdict. Never call check/request-approval without all flags.",
+    ]
     return "\n".join(lines)
 
 

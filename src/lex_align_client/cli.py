@@ -10,6 +10,7 @@ import click
 
 from .api import LexAlignClient, ServerError, ServerUnreachable
 from .claude_hooks import run_hook
+from .claudemd import install_claude_md
 from .config import (
     CONFIG_FILENAME,
     ClientConfig,
@@ -52,6 +53,7 @@ def main() -> None:
 @click.option("--mode", type=click.Choice(["single-user", "org"]), default=None)
 @click.option("--no-claude-hooks", is_flag=True, help="Skip Claude Code hook install.")
 @click.option("--no-precommit", is_flag=True, help="Skip git pre-commit install.")
+@click.option("--no-claude-md", is_flag=True, help="Skip CLAUDE.md creation/update.")
 def init(
     yes: bool,
     server_url: str | None,
@@ -59,6 +61,7 @@ def init(
     mode: str | None,
     no_claude_hooks: bool,
     no_precommit: bool,
+    no_claude_md: bool,
 ) -> None:
     """One-time setup: write .lexalign.toml and install hooks."""
     project_root = Path.cwd()
@@ -95,6 +98,15 @@ def init(
     if not no_claude_hooks:
         install_claude_hooks(project_root)
         click.echo("Installed Claude Code hooks in .claude/settings.json.")
+
+    if not no_claude_md:
+        md_existed = (project_root / "CLAUDE.md").exists()
+        md_path, changed = install_claude_md(project_root)
+        if changed:
+            action = "Updated" if md_existed else "Created"
+            click.echo(f"{action} {md_path.name} with lex-align usage instructions.")
+        else:
+            click.echo(f"{md_path.name} already contains lex-align section; skipped.")
 
     if not no_precommit:
         hook_path = install_precommit(project_root)
