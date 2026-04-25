@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from lex_align_server.audit import (
+    APPROVAL_APPROVED,
     APPROVAL_PENDING,
     ApprovalRequest,
     AuditRecord,
@@ -84,6 +85,49 @@ async def test_approval_request_dedupe(store):
     assert len(rows) == 1
     assert rows[0]["rationale"] == "updated rationale"
     assert rows[0]["status"] == APPROVAL_PENDING
+
+
+@pytest.mark.asyncio
+async def test_list_pending_by_package_groups_and_filters_status(store):
+    # Same package requested twice across projects → one grouped row.
+    await store.upsert_approval_request(ApprovalRequest(
+        project="p1", requester="alice", package="numpy", rationale="math",
+    ))
+    await store.upsert_approval_request(ApprovalRequest(
+        project="p2", requester="bob", package="numpy", rationale="more math",
+    ))
+    # A different package, also pending.
+    await store.upsert_approval_request(ApprovalRequest(
+        project="p1", requester="alice", package="scipy", rationale="science",
+    ))
+    # An approved request must NOT show up.
+    await store.upsert_approval_request(ApprovalRequest(
+        project="p1", requester="alice", package="oldpkg", rationale="legacy",
+        status=APPROVAL_APPROVED,
+    ))
+    grouped = await store.list_pending_by_package()
+    by_name = {g["package"]: g for g in grouped}
+    assert set(by_name) == {"numpy", "scipy"}
+    assert by_name["numpy"]["request_count"] == 2
+    assert by_name["scipy"]["request_count"] == 1
+    assert by_name["numpy"]["normalized_name"] == "numpy"
+
+
+@pytest.mark.asyncio
+async def test_list_pending_by_package_normalizes_names(store):
+    # `lex_align_server.registry.normalize_name` lowercases and maps
+    # `-`/`.` → `_`. Two requests that differ only in case + hyphen vs.
+    # underscore must collapse onto the same key.
+    await store.upsert_approval_request(ApprovalRequest(
+        project="p1", requester="alice", package="Some-Pkg", rationale="parse",
+    ))
+    await store.upsert_approval_request(ApprovalRequest(
+        project="p2", requester="bob", package="some_pkg", rationale="also parse",
+    ))
+    grouped = await store.list_pending_by_package()
+    assert len(grouped) == 1
+    assert grouped[0]["request_count"] == 2
+    assert grouped[0]["normalized_name"] == "some_pkg"
 
 
 @pytest.mark.asyncio

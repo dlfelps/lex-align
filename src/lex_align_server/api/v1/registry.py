@@ -79,6 +79,22 @@ async def get_registry(request: Request) -> dict:
     return _registry_to_dict(reg)
 
 
+@router.get("/registry/pending")
+async def pending_requests(request: Request) -> dict:
+    """Pending approval requests for packages not yet in the live registry.
+
+    Used by the dashboard to surface a triage queue. Items already present
+    in the loaded registry are filtered out so resolved requests don't
+    re-appear after the next compile/redeploy.
+    """
+    state = request.app.state.lex
+    grouped = await state.audit.list_pending_by_package()
+    if state.registry is not None:
+        registered = set(state.registry.packages.keys())
+        grouped = [g for g in grouped if g["normalized_name"] not in registered]
+    return {"items": grouped}
+
+
 @router.post("/registry/parse-yaml")
 async def parse_yaml(body: YamlBody) -> dict:
     try:
