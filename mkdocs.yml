@@ -12,6 +12,8 @@ edit_uri: edit/main/docs/
 theme:
   name: material
   language: en
+  logo: assets/lex-align-logo.png
+  favicon: assets/lex-align-logo.png
   palette:
     - media: "(prefers-color-scheme: light)"
       scheme: default
@@ -95,4 +97,5 @@ extra_javascript:
 nav:
   - Home: index.md
   - Getting Started: getting-started.md
+  - For Agents: for-agents.md
   - API Reference: api.md
