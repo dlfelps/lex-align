@@ -8,14 +8,13 @@ dynamic = ["version"]
 description = "Enterprise governance platform for AI-generated code: legal, security, and architectural alignment"
 readme = "README.md"
 requires-python = ">=3.11"
-dependencies = []
-
-[project.optional-dependencies]
-client = [
+dependencies = [
     "click>=8.0",
     "httpx>=0.27",
     "tomli-w>=1.0",
 ]
+
+[project.optional-dependencies]
 server = [
     "fastapi>=0.115",
     "uvicorn[standard]>=0.30",
