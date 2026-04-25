@@ -1,28 +1,43 @@
-## lex-align
+## lex-align (v2.2)
 
-Before starting any non-trivial task that may touch dependencies, run:
-  uv run lex-align plan "<task description>"
-This surfaces relevant decisions, previously-evaluated alternatives, active
-constraints, and any registry guidance that applies to the task.
+This repo is governed by lex-align — every dependency change is checked
+against the centrally-managed registry, the OSV CVE feed, and a license
+policy. The server is the source of truth; the client is a thin CLI and a
+set of hooks.
 
-When modifying pyproject.toml dependencies:
-- The PreToolUse hook will evaluate every added or bumped package against the
-  enterprise registry and license policy. It may hard-block the edit.
-- For `approved` (neutral) packages, run `uv run lex-align propose` to document
-  the architectural need before the edit lands.
-- For `preferred` packages, the hook auto-writes an accepted ADR; no action needed.
-- For `deprecated`, `banned`, or license-blocked packages, use the registry-named
-  replacement or choose a different package.
+### Before adding or bumping a runtime dependency
 
-When you encounter an OBSERVED entry for a dependency you are actively using:
-- Run `uv run lex-align promote <id>`. You likely have enough context from the
-  current task. If you genuinely don't, leave it observed.
+Run:
 
-Run `uv run lex-align show <id>` before touching code governed by a decision.
-Do not repeat evaluation work already recorded in alternatives.
+```
+lex-align-client check --package <name> [--version <v>]
+```
 
-IMPORTANT for AI agents: NEVER run `lex-align propose` or `lex-align promote`
-without supplying all required flags and `--yes`. These commands have interactive
-prompts that will hang a non-interactive session. Always use flags to provide
-every field. Run `lex-align propose --help` or `lex-align promote --help` to see
-the required flags.
+The verdict will be one of:
+
+* `ALLOWED` — proceed.
+* `PROVISIONALLY_ALLOWED` — proceed, then run
+  `lex-align-client request-approval --package <name> --rationale "<why>"`
+  to enqueue formal addition to the registry. Do not wait for review.
+* `DENIED` — do not add the package. The `reason` field explains whether
+  it was the registry, a critical CVE, or the license. If a `replacement`
+  is provided, prefer it.
+
+### Hard guarantees
+
+* The git **pre-commit hook** re-checks every runtime dep on every commit,
+  so a freshly-published critical CVE on an already-installed package will
+  block the commit and force you to replan.
+* The Claude Code **PreToolUse** hook intercepts every edit to
+  `pyproject.toml` and applies the same logic before the bytes hit disk.
+
+If a check returns DENIED, do not bypass the hook. Replace the package or
+choose a different version.
+
+### IMPORTANT for AI agents
+
+* `lex-align-client check` and `request-approval` are non-interactive when
+  given all required flags — never call them without explicit `--package`
+  and (for `request-approval`) `--rationale`.
+* `lex-align-client init` is a one-shot setup command. If `.lexalign.toml`
+  is already present, do not re-run it; the project is already configured.

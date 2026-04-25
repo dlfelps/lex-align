@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>{{ title }}</title>
+<style>
+  body  { font-family: system-ui, sans-serif; max-width: 960px; margin: 2rem auto; padding: 0 1rem; }
+  table { border-collapse: collapse; width: 100%; }
+  th,td { text-align: left; padding: 0.4rem 0.6rem; border-bottom: 1px solid #eee; }
+  .preferred  { color: #055; }
+  .approved   { color: #444; }
+  .deprecated { color: #a40; }
+  .banned     { color: #b00; }
+  .version-constrained { color: #036; }
+</style>
+</head>
+<body>
+<h1>{{ title }}</h1>
+{% if registry %}
+  <p>Version <strong>{{ registry.version }}</strong> ·
+     {{ registry.packages|length }} packages ·
+     CVE threshold {{ "%.1f"|format(registry.global_policies.cve_threshold * 10) }}</p>
+  <h2>Packages</h2>
+  <table>
+    <tr><th>Name</th><th>Status</th><th>Reason / Replacement</th></tr>
+    {% for name, rule in registry.packages.items()|sort %}
+    <tr>
+      <td>{{ name }}</td>
+      <td class="{{ rule.status.value }}">{{ rule.status.value }}</td>
+      <td>
+        {% if rule.replacement %}→ {{ rule.replacement }} · {% endif %}
+        {{ rule.reason or '' }}
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  <h2>Global policies</h2>
+  <pre>auto_approve_licenses: {{ registry.global_policies.auto_approve_licenses }}
+hard_ban_licenses:    {{ registry.global_policies.hard_ban_licenses }}
+unknown_license_policy: {{ registry.global_policies.unknown_license_policy }}
+cve_threshold:        {{ registry.global_policies.cve_threshold }}</pre>
+{% else %}
+  <p>No registry is loaded.</p>
+{% endif %}
+<p><em>The PR-based "Registry Workshop" edit flow is a future deliverable.</em></p>
+</body>
+</html>
