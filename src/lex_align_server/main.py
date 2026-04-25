@@ -17,6 +17,7 @@ from fastapi import FastAPI
 from .api.v1 import approval_requests as approval_router
 from .api.v1 import evaluate as evaluate_router
 from .api.v1 import health as health_router
+from .api.v1 import registry as registry_router
 from .api.v1 import reports as reports_router
 from .audit import AuditStore
 from .cache import JsonCache
@@ -68,6 +69,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(evaluate_router.router, prefix="/api/v1")
     app.include_router(approval_router.router, prefix="/api/v1")
     app.include_router(reports_router.router, prefix="/api/v1")
+    app.include_router(registry_router.router, prefix="/api/v1")
     app.include_router(health_router.router, prefix="/api/v1")
     app.include_router(dashboards_router.router)
     return app

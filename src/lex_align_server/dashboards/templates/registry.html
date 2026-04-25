@@ -4,44 +4,577 @@
 <meta charset="utf-8">
 <title>{{ title }}</title>
 <style>
-  body  { font-family: system-ui, sans-serif; max-width: 960px; margin: 2rem auto; padding: 0 1rem; }
+  :root {
+    --c-preferred:           #0a8a6f;
+    --c-approved:            #4b6cb7;
+    --c-deprecated:          #c47a1a;
+    --c-banned:              #c0392b;
+    --c-version-constrained: #6a4cab;
+    --bg: #fafafa;
+    --border: #e3e3e3;
+    --muted: #666;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: system-ui, sans-serif;
+    max-width: 1100px;
+    margin: 1.5rem auto;
+    padding: 0 1rem;
+    color: #222;
+  }
+  h1 { margin-bottom: 0.25rem; }
+  .subtitle { color: var(--muted); margin-top: 0; }
+  .toolbar {
+    display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: 6px; padding: 0.6rem; margin: 1rem 0;
+  }
+  .toolbar input[type=search] { padding: 0.35rem 0.5rem; min-width: 14rem; }
+  .toolbar .spacer { flex: 1; }
+  button {
+    background: #fff; border: 1px solid #bbb; border-radius: 4px;
+    padding: 0.35rem 0.7rem; cursor: pointer; font: inherit;
+  }
+  button:hover { background: #f0f0f0; }
+  button.primary { background: #2563eb; border-color: #2563eb; color: #fff; }
+  button.primary:hover { background: #1d4ed8; }
+  button.danger { color: #b00; border-color: #c88; }
+  button.danger:hover { background: #fdecec; }
   table { border-collapse: collapse; width: 100%; }
-  th,td { text-align: left; padding: 0.4rem 0.6rem; border-bottom: 1px solid #eee; }
-  .preferred  { color: #055; }
-  .approved   { color: #444; }
-  .deprecated { color: #a40; }
-  .banned     { color: #b00; }
-  .version-constrained { color: #036; }
+  th, td {
+    text-align: left; padding: 0.45rem 0.6rem;
+    border-bottom: 1px solid var(--border); vertical-align: top;
+  }
+  th { background: var(--bg); cursor: pointer; user-select: none; }
+  th .arrow { color: var(--muted); font-size: 0.8em; }
+  tr:hover td { background: #fcfcfc; }
+  .badge {
+    display: inline-block; padding: 0.15rem 0.55rem;
+    border-radius: 999px; font-size: 0.8rem;
+    color: #fff; font-weight: 600; white-space: nowrap;
+  }
+  .badge.preferred           { background: var(--c-preferred); }
+  .badge.approved            { background: var(--c-approved); }
+  .badge.deprecated          { background: var(--c-deprecated); }
+  .badge.banned              { background: var(--c-banned); }
+  .badge.version-constrained { background: var(--c-version-constrained); }
+  .row-actions button { padding: 0.2rem 0.5rem; font-size: 0.85rem; }
+  .meta { color: var(--muted); font-size: 0.9rem; }
+  .empty { padding: 2rem; text-align: center; color: var(--muted); }
+
+  /* Modal */
+  dialog::backdrop { background: rgba(0,0,0,0.4); }
+  dialog {
+    border: 1px solid var(--border); border-radius: 6px;
+    padding: 1rem 1.25rem; width: min(560px, 92vw); max-width: 100%;
+  }
+  dialog h2 { margin-top: 0; }
+  .field { display: flex; flex-direction: column; gap: 0.25rem; margin-bottom: 0.7rem; }
+  .field label { font-weight: 600; font-size: 0.9rem; }
+  .field input, .field select, .field textarea {
+    padding: 0.4rem; border: 1px solid #ccc; border-radius: 4px; font: inherit;
+  }
+  .field textarea { min-height: 4rem; resize: vertical; }
+  .form-error {
+    background: #fdecec; border: 1px solid #c88; color: #800;
+    padding: 0.5rem; border-radius: 4px; margin-bottom: 0.7rem;
+    display: none; white-space: pre-wrap;
+  }
+  .form-error.visible { display: block; }
+  .modal-actions { display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 0.5rem; }
+
+  /* Global policies block */
+  details.policies {
+    margin: 1rem 0; padding: 0.5rem 0.75rem;
+    background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+  }
+  details.policies summary { cursor: pointer; font-weight: 600; }
+  .policies-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.7rem; margin-top: 0.5rem; }
+  .policies-grid .field { margin-bottom: 0; }
+  @media (max-width: 600px) { .policies-grid { grid-template-columns: 1fr; } }
+
+  /* Toast */
+  .toast {
+    position: fixed; bottom: 1.5rem; right: 1.5rem;
+    background: #222; color: #fff; padding: 0.6rem 1rem; border-radius: 4px;
+    opacity: 0; transition: opacity 0.2s; pointer-events: none;
+  }
+  .toast.visible { opacity: 1; }
+  .dirty-marker {
+    display: none; padding: 0.15rem 0.5rem; border-radius: 4px;
+    background: #fef3c7; color: #92400e; font-size: 0.8rem; font-weight: 600;
+  }
+  .dirty-marker.visible { display: inline-block; }
 </style>
 </head>
 <body>
 <h1>{{ title }}</h1>
-{% if registry %}
-  <p>Version <strong>{{ registry.version }}</strong> ·
-     {{ registry.packages|length }} packages ·
-     CVE threshold {{ "%.1f"|format(registry.global_policies.cve_threshold * 10) }}</p>
-  <h2>Packages</h2>
-  <table>
-    <tr><th>Name</th><th>Status</th><th>Reason / Replacement</th></tr>
-    {% for name, rule in registry.packages.items()|sort %}
+<p class="subtitle">
+  Edit packages and policies in your browser, then export the result as YAML.
+  <strong>Changes are not saved on the server</strong> — export before you leave.
+</p>
+
+<div id="meta" class="meta"></div>
+
+<details class="policies" id="policies-section">
+  <summary>Global policies</summary>
+  <div class="policies-grid">
+    <div class="field">
+      <label for="gp-version">Registry version</label>
+      <input type="text" id="gp-version">
+    </div>
+    <div class="field">
+      <label for="gp-cve">CVE threshold (0.0 – 1.0)</label>
+      <input type="number" id="gp-cve" min="0" max="1" step="0.05">
+    </div>
+    <div class="field">
+      <label for="gp-unknown">Unknown license policy</label>
+      <select id="gp-unknown">
+        <option value="block">block</option>
+        <option value="warn">warn</option>
+        <option value="allow">allow</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="gp-auto">Auto-approve licenses (comma-separated)</label>
+      <input type="text" id="gp-auto" placeholder="MIT, Apache-2.0">
+    </div>
+    <div class="field">
+      <label for="gp-ban">Hard-ban licenses (comma-separated)</label>
+      <input type="text" id="gp-ban" placeholder="GPL-3.0, AGPL-3.0">
+    </div>
+    <div class="field">
+      <label for="gp-review">Require human review (comma-separated)</label>
+      <input type="text" id="gp-review">
+    </div>
+  </div>
+</details>
+
+<div class="toolbar">
+  <input type="search" id="search" placeholder="Filter by name or status…">
+  <button id="add-btn" class="primary">+ Add package</button>
+  <span class="spacer"></span>
+  <span id="dirty-marker" class="dirty-marker">Unsaved changes</span>
+  <button id="import-btn">Import YAML…</button>
+  <input type="file" id="import-file" accept=".yml,.yaml,text/yaml" style="display:none">
+  <button id="export-btn" class="primary">Export YAML</button>
+  <button id="reset-btn">Discard changes</button>
+</div>
+
+<table>
+  <thead>
     <tr>
-      <td>{{ name }}</td>
-      <td class="{{ rule.status.value }}">{{ rule.status.value }}</td>
-      <td>
-        {% if rule.replacement %}→ {{ rule.replacement }} · {% endif %}
-        {{ rule.reason or '' }}
-      </td>
+      <th data-sort="name">Name <span class="arrow" id="arrow-name">↕</span></th>
+      <th data-sort="status">Status <span class="arrow" id="arrow-status">↕</span></th>
+      <th>Replacement</th>
+      <th>Version constraint</th>
+      <th>Reason</th>
+      <th></th>
     </tr>
-    {% endfor %}
-  </table>
-  <h2>Global policies</h2>
-  <pre>auto_approve_licenses: {{ registry.global_policies.auto_approve_licenses }}
-hard_ban_licenses:    {{ registry.global_policies.hard_ban_licenses }}
-unknown_license_policy: {{ registry.global_policies.unknown_license_policy }}
-cve_threshold:        {{ registry.global_policies.cve_threshold }}</pre>
-{% else %}
-  <p>No registry is loaded.</p>
-{% endif %}
-<p><em>The PR-based "Registry Workshop" edit flow is a future deliverable.</em></p>
+  </thead>
+  <tbody id="rows"></tbody>
+</table>
+<div id="empty" class="empty" style="display:none">No packages match.</div>
+
+<dialog id="edit-dialog">
+  <form method="dialog" id="edit-form">
+    <h2 id="dialog-title">Edit package</h2>
+    <div class="form-error" id="form-error"></div>
+    <div class="field">
+      <label for="f-name">Name</label>
+      <input type="text" id="f-name" required>
+    </div>
+    <div class="field">
+      <label for="f-status">Status</label>
+      <select id="f-status" required>
+        <option value="preferred">preferred</option>
+        <option value="approved">approved</option>
+        <option value="deprecated">deprecated</option>
+        <option value="version-constrained">version-constrained</option>
+        <option value="banned">banned</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="f-replacement">Replacement (required for deprecated)</label>
+      <input type="text" id="f-replacement">
+    </div>
+    <div class="field">
+      <label for="f-min">Min version</label>
+      <input type="text" id="f-min" placeholder="e.g. 42.0.0">
+    </div>
+    <div class="field">
+      <label for="f-max">Max version</label>
+      <input type="text" id="f-max" placeholder="e.g. 5.0.0">
+    </div>
+    <div class="field">
+      <label for="f-reason">Reason</label>
+      <textarea id="f-reason"></textarea>
+    </div>
+    <div class="modal-actions">
+      <button type="button" id="cancel-btn">Cancel</button>
+      <button type="submit" class="primary" id="save-btn">Save</button>
+    </div>
+  </form>
+</dialog>
+
+<div id="toast" class="toast"></div>
+
+<script>
+const STATUSES = ["preferred","approved","deprecated","version-constrained","banned"];
+const STATUS_RANK = Object.fromEntries(STATUSES.map((s,i) => [s, i]));
+
+let registry = null;       // current working copy { version, global_policies, packages }
+let original = null;       // last loaded snapshot, for "discard" + dirty detection
+let sortField = "name";
+let sortDir = 1;           // 1 asc, -1 desc
+let editingName = null;    // null = create, else editing existing
+
+// --- helpers ----------------------------------------------------------------
+
+function clone(o) { return JSON.parse(JSON.stringify(o)); }
+
+function isDirty() {
+  return JSON.stringify(registry) !== JSON.stringify(original);
+}
+
+function updateDirtyMarker() {
+  document.getElementById("dirty-marker").classList.toggle("visible", isDirty());
+}
+
+function toast(msg) {
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.classList.add("visible");
+  setTimeout(() => t.classList.remove("visible"), 1800);
+}
+
+function csv(arr) { return (arr || []).join(", "); }
+function parseCsv(s) {
+  return (s || "").split(",").map(x => x.trim()).filter(Boolean);
+}
+
+// --- validation: mirrors tools/compile_registry.py -------------------------
+
+function validatePackage(name, rule) {
+  const errs = [];
+  if (!name || !name.trim()) errs.push("Package name is required.");
+  if (!STATUSES.includes(rule.status)) errs.push(`status must be one of ${STATUSES.join(", ")}.`);
+  if (rule.status === "deprecated" && !rule.replacement) {
+    errs.push("`deprecated` packages require a replacement.");
+  }
+  if (rule.status === "version-constrained" && !rule.min_version && !rule.max_version) {
+    errs.push("`version-constrained` packages require min_version or max_version.");
+  }
+  return errs;
+}
+
+// --- rendering --------------------------------------------------------------
+
+function renderPolicies() {
+  const gp = registry.global_policies;
+  document.getElementById("gp-version").value = registry.version || "";
+  document.getElementById("gp-cve").value = gp.cve_threshold ?? 0.9;
+  document.getElementById("gp-unknown").value = gp.unknown_license_policy || "block";
+  document.getElementById("gp-auto").value = csv(gp.auto_approve_licenses);
+  document.getElementById("gp-ban").value = csv(gp.hard_ban_licenses);
+  document.getElementById("gp-review").value = csv(gp.require_human_review_licenses);
+}
+
+function readPoliciesFromForm() {
+  registry.version = document.getElementById("gp-version").value.trim() || "1";
+  const gp = registry.global_policies;
+  const cve = parseFloat(document.getElementById("gp-cve").value);
+  gp.cve_threshold = isNaN(cve) ? 0.9 : Math.max(0, Math.min(1, cve));
+  gp.unknown_license_policy = document.getElementById("gp-unknown").value;
+  gp.auto_approve_licenses = parseCsv(document.getElementById("gp-auto").value);
+  gp.hard_ban_licenses = parseCsv(document.getElementById("gp-ban").value);
+  gp.require_human_review_licenses = parseCsv(document.getElementById("gp-review").value);
+  updateDirtyMarker();
+}
+
+function renderRows() {
+  const filter = document.getElementById("search").value.trim().toLowerCase();
+  const tbody = document.getElementById("rows");
+  tbody.innerHTML = "";
+
+  const entries = Object.entries(registry.packages)
+    .filter(([name, rule]) =>
+      !filter
+      || name.toLowerCase().includes(filter)
+      || rule.status.toLowerCase().includes(filter)
+    );
+
+  entries.sort(([na, ra], [nb, rb]) => {
+    if (sortField === "status") {
+      const da = STATUS_RANK[ra.status] ?? 99;
+      const db = STATUS_RANK[rb.status] ?? 99;
+      if (da !== db) return (da - db) * sortDir;
+      return na.localeCompare(nb) * sortDir;
+    }
+    return na.localeCompare(nb) * sortDir;
+  });
+
+  document.getElementById("empty").style.display = entries.length ? "none" : "block";
+
+  for (const [name, rule] of entries) {
+    const tr = document.createElement("tr");
+    const vc = [
+      rule.min_version ? `>=${rule.min_version}` : "",
+      rule.max_version ? `<${rule.max_version}` : "",
+    ].filter(Boolean).join(", ");
+
+    tr.innerHTML = `
+      <td><strong></strong></td>
+      <td><span class="badge ${rule.status}"></span></td>
+      <td></td>
+      <td></td>
+      <td></td>
+      <td class="row-actions">
+        <button data-edit="">Edit</button>
+        <button class="danger" data-del="">Delete</button>
+      </td>
+    `;
+    tr.children[0].querySelector("strong").textContent = name;
+    tr.children[1].querySelector(".badge").textContent = rule.status;
+    tr.children[2].textContent = rule.replacement || "";
+    tr.children[3].textContent = vc;
+    tr.children[4].textContent = rule.reason || "";
+    tr.querySelector("[data-edit]").dataset.edit = name;
+    tr.querySelector("[data-del]").dataset.del = name;
+    tbody.appendChild(tr);
+  }
+
+  document.getElementById("arrow-name").textContent =
+    sortField === "name" ? (sortDir > 0 ? "↑" : "↓") : "↕";
+  document.getElementById("arrow-status").textContent =
+    sortField === "status" ? (sortDir > 0 ? "↑" : "↓") : "↕";
+}
+
+function renderMeta() {
+  const count = Object.keys(registry.packages).length;
+  document.getElementById("meta").textContent =
+    `Version ${registry.version} · ${count} package${count === 1 ? "" : "s"}`;
+}
+
+function rerender() {
+  renderMeta();
+  renderPolicies();
+  renderRows();
+  updateDirtyMarker();
+}
+
+// --- modal ------------------------------------------------------------------
+
+function openDialog(name) {
+  editingName = name;
+  const dlg = document.getElementById("edit-dialog");
+  document.getElementById("dialog-title").textContent =
+    name === null ? "Add package" : `Edit ${name}`;
+  document.getElementById("form-error").classList.remove("visible");
+
+  const rule = name === null
+    ? { status: "preferred" }
+    : registry.packages[name];
+
+  document.getElementById("f-name").value = name === null ? "" : name;
+  document.getElementById("f-name").readOnly = name !== null;
+  document.getElementById("f-status").value = rule.status || "preferred";
+  document.getElementById("f-replacement").value = rule.replacement || "";
+  document.getElementById("f-min").value = rule.min_version || "";
+  document.getElementById("f-max").value = rule.max_version || "";
+  document.getElementById("f-reason").value = rule.reason || "";
+  dlg.showModal();
+}
+
+function closeDialog() {
+  document.getElementById("edit-dialog").close();
+}
+
+function saveDialog(ev) {
+  ev.preventDefault();
+  const name = document.getElementById("f-name").value.trim();
+  const rule = {
+    status: document.getElementById("f-status").value,
+  };
+  const repl = document.getElementById("f-replacement").value.trim();
+  const minV = document.getElementById("f-min").value.trim();
+  const maxV = document.getElementById("f-max").value.trim();
+  const reason = document.getElementById("f-reason").value.trim();
+  if (repl) rule.replacement = repl;
+  if (minV) rule.min_version = minV;
+  if (maxV) rule.max_version = maxV;
+  if (reason) rule.reason = reason;
+
+  const errs = validatePackage(name, rule);
+  if (editingName === null && registry.packages[name]) {
+    errs.push(`A package named "${name}" already exists.`);
+  }
+  if (errs.length) {
+    const box = document.getElementById("form-error");
+    box.textContent = errs.join("\n");
+    box.classList.add("visible");
+    return;
+  }
+
+  registry.packages[name] = rule;
+  closeDialog();
+  rerender();
+  toast(editingName === null ? `Added ${name}` : `Updated ${name}`);
+}
+
+// --- YAML emit (small dialect-specific writer) -----------------------------
+
+function yamlString(s) {
+  // Quote when ambiguous (numbers, booleans, special chars). Otherwise
+  // emit bare strings to keep the file readable.
+  if (s === "") return '""';
+  if (/^[A-Za-z_][A-Za-z0-9_.+-]*$/.test(s) && !/^(true|false|null|yes|no|on|off)$/i.test(s)) {
+    return s;
+  }
+  return JSON.stringify(s);
+}
+
+function yamlList(arr) {
+  if (!arr || arr.length === 0) return "[]";
+  return "[" + arr.map(yamlString).join(", ") + "]";
+}
+
+function exportYaml() {
+  readPoliciesFromForm();
+  const gp = registry.global_policies;
+  const lines = [];
+  lines.push(`version: ${yamlString(String(registry.version))}`);
+  lines.push("");
+  lines.push("global_policies:");
+  lines.push(`  auto_approve_licenses: ${yamlList(gp.auto_approve_licenses)}`);
+  lines.push(`  hard_ban_licenses: ${yamlList(gp.hard_ban_licenses)}`);
+  if ((gp.require_human_review_licenses || []).length) {
+    lines.push(`  require_human_review_licenses: ${yamlList(gp.require_human_review_licenses)}`);
+  }
+  lines.push(`  unknown_license_policy: ${gp.unknown_license_policy}`);
+  lines.push(`  cve_threshold: ${gp.cve_threshold}`);
+  lines.push("");
+  lines.push("packages:");
+
+  const names = Object.keys(registry.packages).sort();
+  if (names.length === 0) {
+    lines.push("  {}");
+  } else {
+    for (const name of names) {
+      const rule = registry.packages[name];
+      lines.push(`  ${yamlString(name)}:`);
+      lines.push(`    status: ${rule.status}`);
+      if (rule.replacement) lines.push(`    replacement: ${yamlString(rule.replacement)}`);
+      if (rule.min_version)  lines.push(`    min_version: ${yamlString(rule.min_version)}`);
+      if (rule.max_version)  lines.push(`    max_version: ${yamlString(rule.max_version)}`);
+      if (rule.reason)       lines.push(`    reason: ${yamlString(rule.reason)}`);
+    }
+  }
+  return lines.join("\n") + "\n";
+}
+
+function downloadYaml() {
+  const text = exportYaml();
+  const blob = new Blob([text], { type: "text/yaml" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "registry.yml";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  // Exporting is the user's "save" action; treat the current state as the
+  // new baseline so the dirty marker reflects further edits.
+  original = clone(registry);
+  updateDirtyMarker();
+  toast("Exported registry.yml");
+}
+
+// --- import / load ----------------------------------------------------------
+
+async function importYaml(file) {
+  const text = await file.text();
+  const r = await fetch("/api/v1/registry/parse-yaml", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ yaml_text: text }),
+  });
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({ detail: r.statusText }));
+    alert(`Import failed: ${err.detail || r.statusText}`);
+    return;
+  }
+  registry = await r.json();
+  // parse-yaml returns the compiled JSON shape; ensure all expected keys exist.
+  registry.global_policies = registry.global_policies || {};
+  registry.global_policies.auto_approve_licenses ||= [];
+  registry.global_policies.hard_ban_licenses ||= [];
+  registry.global_policies.require_human_review_licenses ||= [];
+  registry.packages = registry.packages || {};
+  rerender();
+  toast(`Imported ${file.name}`);
+}
+
+async function loadFromServer() {
+  const r = await fetch("/api/v1/registry");
+  registry = await r.json();
+  original = clone(registry);
+  rerender();
+}
+
+// --- wiring -----------------------------------------------------------------
+
+document.getElementById("add-btn").addEventListener("click", () => openDialog(null));
+document.getElementById("cancel-btn").addEventListener("click", closeDialog);
+document.getElementById("edit-form").addEventListener("submit", saveDialog);
+document.getElementById("search").addEventListener("input", renderRows);
+document.getElementById("export-btn").addEventListener("click", downloadYaml);
+document.getElementById("reset-btn").addEventListener("click", () => {
+  if (!isDirty() || confirm("Discard all unsaved changes?")) {
+    registry = clone(original);
+    rerender();
+    toast("Reverted to last loaded state");
+  }
+});
+document.getElementById("import-btn").addEventListener("click", () => {
+  document.getElementById("import-file").click();
+});
+document.getElementById("import-file").addEventListener("change", (e) => {
+  const f = e.target.files[0];
+  if (f) importYaml(f);
+  e.target.value = "";
+});
+
+document.querySelectorAll("th[data-sort]").forEach(th => {
+  th.addEventListener("click", () => {
+    const f = th.dataset.sort;
+    if (sortField === f) sortDir = -sortDir; else { sortField = f; sortDir = 1; }
+    renderRows();
+  });
+});
+
+document.getElementById("rows").addEventListener("click", (e) => {
+  const editName = e.target.dataset && e.target.dataset.edit;
+  const delName  = e.target.dataset && e.target.dataset.del;
+  if (editName) openDialog(editName);
+  else if (delName) {
+    if (confirm(`Delete ${delName}?`)) {
+      delete registry.packages[delName];
+      rerender();
+      toast(`Deleted ${delName}`);
+    }
+  }
+});
+
+// Re-read policy fields on any change so they participate in dirty tracking.
+document.getElementById("policies-section").addEventListener("input", readPoliciesFromForm);
+
+window.addEventListener("beforeunload", (e) => {
+  if (isDirty()) { e.preventDefault(); e.returnValue = ""; }
+});
+
+loadFromServer();
+</script>
 </body>
 </html>
