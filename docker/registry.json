@@ -1,0 +1,67 @@
+{
+  "global_policies": {
+    "auto_approve_licenses": [
+      "MIT",
+      "Apache-2.0",
+      "BSD-3-Clause",
+      "BSD-2-Clause",
+      "ISC"
+    ],
+    "cve_threshold": 0.9,
+    "hard_ban_licenses": [
+      "AGPL-3.0",
+      "GPL-3.0",
+      "GPL-2.0",
+      "LGPL-3.0",
+      "LGPL-2.1"
+    ],
+    "require_human_review_licenses": [
+      "MPL-2.0",
+      "EPL-2.0"
+    ],
+    "unknown_license_policy": "block"
+  },
+  "packages": {
+    "cryptography": {
+      "min_version": "42.0.0",
+      "reason": "CVE-2023-50782 affects earlier versions.",
+      "status": "version-constrained"
+    },
+    "django": {
+      "max_version": "5.99.0",
+      "min_version": "4.2.0",
+      "reason": "Pinned to LTS-supported majors.",
+      "status": "version-constrained"
+    },
+    "fastapi": {
+      "reason": "Project-wide web framework.",
+      "status": "preferred"
+    },
+    "httpx": {
+      "reason": "Standard async HTTP client.",
+      "status": "preferred"
+    },
+    "left-pad": {
+      "reason": "Trivial functionality; do not pull from npm-style micro-deps.",
+      "status": "banned"
+    },
+    "pydantic": {
+      "reason": "Validated data models across services.",
+      "status": "preferred"
+    },
+    "pyqt5": {
+      "reason": "GPL-licensed; no commercial license held.",
+      "status": "banned"
+    },
+    "requests": {
+      "reason": "Migrating all services to async patterns.",
+      "replacement": "httpx",
+      "status": "deprecated"
+    },
+    "urllib3": {
+      "reason": "Allowed as a transitive dependency only.",
+      "status": "approved"
+    }
+  },
+  "version": "1.2"
+}
