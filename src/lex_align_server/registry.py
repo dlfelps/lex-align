@@ -1,8 +1,8 @@
 """Enterprise registry: package policies, license rules, CVE threshold.
 
 The registry is loaded from a local JSON file (compiled from the
-human-authored YAML by `tools/compile_registry.py`). The server consults it
-on every `/evaluate` call.
+human-authored YAML by `lex-align-server registry compile`). The server
+consults it on every `/evaluate` call.
 """
 
 from __future__ import annotations

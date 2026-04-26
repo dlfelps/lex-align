@@ -153,7 +153,7 @@ session.
 
 The `registry_status` field on a verdict can take these values
 (matches the YAML schema in
-[`docker/registry.example.yml`](https://github.com/dlfelps/lex-align/blob/main/docker/registry.example.yml)):
+[`registry.example.yml`](https://github.com/dlfelps/lex-align/blob/main/src/lex_align_server/_assets/registry.example.yml)):
 
 | Status | Action implied | Verdict |
 |---|---|---|

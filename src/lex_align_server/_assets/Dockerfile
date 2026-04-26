@@ -1,4 +1,4 @@
-FROM python:3.12-slim AS base
+FROM python:3.12-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -6,11 +6,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-COPY pyproject.toml README.md ./
-COPY src/ ./src/
-
 RUN pip install --upgrade pip \
- && pip install ".[server]"
+ && pip install "lex-align[server]=={LEX_ALIGN_VERSION}"
 
 RUN mkdir -p /var/lib/lexalign /etc/lexalign
 
