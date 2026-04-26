@@ -1,3 +1,29 @@
 .adr-agent/sessions/
 **/*.pyc
 .env
+
+# Python build artifacts
+build/
+dist/
+*.egg-info/
+*.egg
+wheels/
+
+# Caches
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.coverage
+.coverage.*
+htmlcov/
+
+# Virtual environments
+.venv/
+venv/
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
