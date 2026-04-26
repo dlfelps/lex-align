@@ -8,11 +8,49 @@ dynamic = ["version"]
 description = "Enterprise governance platform for AI-generated code: legal, security, and architectural alignment"
 readme = "README.md"
 requires-python = ">=3.11"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [
+    { name = "dlfelps", email = "dlfelps@gmail.com" },
+]
+keywords = [
+    "ai",
+    "governance",
+    "compliance",
+    "security",
+    "license",
+    "cve",
+    "dependencies",
+    "supply-chain",
+    "claude",
+    "agents",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: System Administrators",
+    "Intended Audience :: Legal Industry",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development",
+    "Topic :: Software Development :: Quality Assurance",
+    "Topic :: Security",
+]
 dependencies = [
     "click>=8.0",
     "httpx>=0.27",
     "tomli-w>=1.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/dlfelps/lex-align"
+Documentation = "https://dlfelps.github.io/lex-align/"
+Repository = "https://github.com/dlfelps/lex-align"
+Issues = "https://github.com/dlfelps/lex-align/issues"
 
 [project.optional-dependencies]
 server = [
@@ -37,6 +75,30 @@ path = "src/lex_align_client/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/lex_align_client", "src/lex_align_server"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "src/lex_align_client",
+    "src/lex_align_server",
+    "README.md",
+    "LICENSE",
+    "pyproject.toml",
+]
+exclude = [
+    "tests",
+    "docs",
+    ".adr-agent",
+    ".claude",
+    ".devcontainer",
+    ".github",
+    "*.pdf",
+    "*.png",
+    "mkdocs.yml",
+    "uv.lock",
+    "adr-agent-v1.1.md",
+    "lex-align_v2.2.md",
+    "CLAUDE.md",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
