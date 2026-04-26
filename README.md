@@ -45,23 +45,22 @@ inclusion in the registry. The human-review workflow runs asynchronously.
 ### 1. Run the server
 
 ```bash
-cd docker
-cp registry.example.yml registry.yml   # edit to taste
-python ../tools/compile_registry.py registry.yml registry.json
+pip install "lex-align[server]"
+lex-align-server init                   # writes ./lexalign/ with compose stack + registry
+cd lexalign
+$EDITOR registry.yml                    # tune package policies (optional)
+lex-align-server registry compile registry.yml registry.json
 docker compose up -d
+lex-align-server selftest               # confirms /api/v1/health responds
 ```
 
 The server binds to `127.0.0.1:8765`. Redis is internal to the compose
 network. Single-user mode (`AUTH_ENABLED=false`) is the default.
 
-```bash
-curl http://127.0.0.1:8765/api/v1/health
-```
-
 ### 2. Initialize a project
 
 ```bash
-pip install "lex-align[client]"   # or: uv add --dev "lex-align[client]"
+pip install "lex-align"                 # or: uv add --dev "lex-align"
 cd /path/to/your/project
 lex-align-client init
 ```
@@ -104,8 +103,8 @@ Verdict labels returned to the client:
 
 ## The enterprise registry
 
-Authored as YAML and compiled to JSON via `tools/compile_registry.py`. A
-minimal example (`docker/registry.example.yml`):
+Authored as YAML and compiled to JSON via `lex-align-server registry compile`.
+The bundled example (materialized as `registry.yml` by `lex-align-server init`):
 
 ```yaml
 version: "1.2"
@@ -194,17 +193,14 @@ repo lands in Phase 4.
 
 ```
 src/
-  lex_align_client/      # CLI + hooks
-  lex_align_server/      # FastAPI app
-docker/
-  Dockerfile
-  docker-compose.yml
-  registry.example.yml
-tools/
-  compile_registry.py
+  lex_align_client/                 # CLI + hooks
+  lex_align_server/                 # FastAPI app
+    _assets/                        # operator bundle (Dockerfile, compose,
+                                    #   registry example, env) shipped in the
+                                    #   wheel and emitted by `init`
 tests/
-  client/                # 41 tests
-  server/                # 67 tests
+  client/                           # 41 tests
+  server/                           # 67 tests
 ```
 
 Install for development:

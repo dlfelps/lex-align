@@ -3,7 +3,7 @@ dashboard's import endpoint.
 
 This module is intentionally pure: no I/O, no CLI argparse, no FastAPI
 dependencies. The two entry points that consume it (the
-`tools/compile_registry.py` CLI and `lex_align_server.api.v1.registry`)
+`lex-align-server registry compile` CLI and `lex_align_server.api.v1.registry`)
 both depend on the same validator so a registry YAML accepted by the
 dashboard is guaranteed to compile in CI, and vice versa.
 """

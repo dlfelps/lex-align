@@ -32,5 +32,5 @@ moving while `request-approval` enqueues formal review asynchronously
 
 ## Optional
 
-- [Registry example](https://github.com/dlfelps/lex-align/blob/main/docker/registry.example.yml): YAML schema for the enterprise package registry.
+- [Registry example](https://github.com/dlfelps/lex-align/blob/main/src/lex_align_server/_assets/registry.example.yml): YAML schema for the enterprise package registry. Materialized as `registry.yml` by `lex-align-server init`.
 - [Server endpoints](for-agents.md#server-endpoints-if-you-must-call-directly): Direct HTTP API if shelling out is not an option.
