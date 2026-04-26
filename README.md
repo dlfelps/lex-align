@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./lex-align-logo.png" alt="lex-align" width="520">
+  <img src="https://raw.githubusercontent.com/dlfelps/lex-align/main/lex-align-logo.png" alt="lex-align" width="520">
 </p>
 
 <h1 align="center">lex-align</h1>
