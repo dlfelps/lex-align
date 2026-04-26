@@ -112,6 +112,9 @@ Every check returns one of three verdicts:
 ## Next
 
 - Browse the [API Reference](api.md) for module-level docs.
+- See [Agent Support](agent-support.md) for the per-agent matrix
+  (Claude Code is first-class; Cursor and Aider get the pre-commit
+  guardrail and the CLI commands but not the edit-time intercept).
 - The [For Agents](for-agents.md) page is the concise playbook for AI
   coding agents working in a `lex-align`-governed repo.
 - See the project [README](https://github.com/dlfelps/lex-align#readme)

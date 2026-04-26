@@ -40,6 +40,37 @@ inclusion in the registry. The human-review workflow runs asynchronously.
 
 ---
 
+## Agent support
+
+`lex-align`'s primary target is **[Claude Code]**. The hard guardrail —
+the git pre-commit hook — is a vanilla Git hook that fires for any
+agent (or human) committing to a governed repo, so the worst case for a
+non-Claude agent is "denied dep blocked at commit time" rather than
+"denied dep slips through". Soft guardrails (edit-time intercept,
+auto-prompted advisor) are first-class for Claude Code only.
+
+| Capability | [Claude Code] | [Cursor] | [Aider] |
+|---|:---:|:---:|:---:|
+| Git pre-commit guardrail (hard block on `DENIED`) | ✅ | ✅ | ✅ |
+| `lex-align-client check` / `request-approval` CLI | ✅ | ✅ | ✅ |
+| Edit-time `pyproject.toml` intercept | ✅ via `.claude/settings.json` `PreToolUse` | ❌ no equivalent hook | ❌ no equivalent hook |
+| Auto-prompted to run `check` before adding a dep | ✅ via `CLAUDE.md` (written by `init`) | ⚠️ user-provided `.cursorrules` | ⚠️ user-provided `CONVENTIONS.md` |
+| Auto-installed by `lex-align-client init` | ✅ hooks + `CLAUDE.md` | ❌ bring your own rules file | ❌ bring your own conventions file |
+
+Other agents (Codex CLI, Windsurf, GitHub Copilot in VS Code, Cline, an
+internal harness, a human at the terminal) get the pre-commit guardrail
+and CLI commands for free. Broader native coverage (e.g. via MCP) is
+not on the current roadmap.
+
+See [Agent Support](https://dlfelps.github.io/lex-align/agent-support/)
+for the full breakdown.
+
+[Claude Code]: https://claude.com/claude-code
+[Cursor]: https://cursor.com/
+[Aider]: https://aider.chat/
+
+---
+
 ## Quick start (single-user mode)
 
 ### 1. Run the server
