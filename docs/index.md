@@ -84,6 +84,31 @@ The verdict surface is small on purpose:
 
 ---
 
+## Agent support
+
+Primary target is **[Claude Code]** — `lex-align-client init` wires up
+both the pre-commit hook and the `PreToolUse` edit-time intercept
+automatically, and writes a `CLAUDE.md` so every session knows how to
+use `check` / `request-approval`. The hard guardrail (the pre-commit
+hook) is universal, so other agents are still backstopped at commit
+time.
+
+| Capability | [Claude Code] | [Cursor] | [Aider] |
+|---|:---:|:---:|:---:|
+| Git pre-commit guardrail | :material-check-circle: | :material-check-circle: | :material-check-circle: |
+| `check` / `request-approval` CLI | :material-check-circle: | :material-check-circle: | :material-check-circle: |
+| Edit-time `pyproject.toml` intercept | :material-check-circle: | :material-close-circle: | :material-close-circle: |
+| Auto-prompted plan-time advisor | :material-check-circle: | :material-alert-circle-outline: | :material-alert-circle-outline: |
+| Auto-installed by `lex-align-client init` | :material-check-circle: | :material-close-circle: | :material-close-circle: |
+
+[Full breakdown →](agent-support.md)
+
+[Claude Code]: https://claude.com/claude-code
+[Cursor]: https://cursor.com/
+[Aider]: https://aider.chat/
+
+---
+
 ## How risk is scored
 
 The CVE gate is a single configurable threshold over the OSV CVSS score,
@@ -104,6 +129,7 @@ so the default `cve_threshold = 0.9` denies anything with a CVSS of
 ## Quick links
 
 - [Getting Started](getting-started.md) — install the client, run the server, init a project.
+- [Agent Support](agent-support.md) — which features work for which agents (Claude Code / Cursor / Aider).
 - [For Agents](for-agents.md) — concise, machine-friendly playbook for AI coding agents.
 - [`llms.txt`](llms.txt) — site index following the [llmstxt.org](https://llmstxt.org) convention.
 - [API Reference](api.md) — auto-generated docstrings for `lex_align_client` and `lex_align_server`.
