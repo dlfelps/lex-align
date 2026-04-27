@@ -100,6 +100,15 @@ def validate_registry(doc: dict) -> dict:
     }
 
 
+def validate_package_rule(name: str, rule: Any) -> None:
+    """Public single-package validator. Raises ValidationError on failure.
+
+    Used by the dashboard's classify endpoint so the in-memory mutation
+    has the same guarantees as a YAML round-trip.
+    """
+    _validate_package(name, rule)
+
+
 def _validate_package(name: str, rule: Any) -> None:
     if not isinstance(name, str) or not name.strip():
         raise ValidationError(f"package key must be a non-empty string; got {name!r}")

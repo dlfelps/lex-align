@@ -95,6 +95,79 @@ def test_org_mode_attaches_bearer_token(monkeypatch):
     assert captured["auth"] == "Bearer secret-token"
 
 
+def test_check_sends_agent_headers_from_kwargs():
+    """Explicit agent_model/agent_version kwargs propagate as
+    X-LexAlign-Agent-* headers so the server can tag the audit row."""
+    captured: dict = {}
+
+    def handler(request):
+        captured["headers"] = dict(request.headers)
+        return httpx.Response(200, json={
+            "verdict": "ALLOWED", "reason": "", "package": "x",
+            "version": None, "resolved_version": None, "registry_status": None,
+            "replacement": None, "version_constraint": None, "license": None,
+            "cve_ids": [], "max_cvss": None, "is_requestable": False,
+            "needs_rationale": False,
+        })
+
+    cfg = ClientConfig(project="demo", server_url="http://srv")
+    http = httpx.Client(transport=httpx.MockTransport(handler), timeout=1.0)
+    with LexAlignClient(cfg, http_client=http,
+                        agent_model="opus", agent_version="4.7") as client:
+        client.check("x")
+    assert captured["headers"]["x-lexalign-agent-model"] == "opus"
+    assert captured["headers"]["x-lexalign-agent-version"] == "4.7"
+
+
+def test_agent_headers_default_to_env_vars(monkeypatch):
+    captured: dict = {}
+
+    def handler(request):
+        captured["headers"] = dict(request.headers)
+        return httpx.Response(200, json={
+            "verdict": "ALLOWED", "reason": "", "package": "x",
+            "version": None, "resolved_version": None, "registry_status": None,
+            "replacement": None, "version_constraint": None, "license": None,
+            "cve_ids": [], "max_cvss": None, "is_requestable": False,
+            "needs_rationale": False,
+        })
+
+    monkeypatch.setenv("LEXALIGN_AGENT_MODEL", "sonnet")
+    monkeypatch.setenv("LEXALIGN_AGENT_VERSION", "4.6")
+    cfg = ClientConfig(project="demo", server_url="http://srv")
+    http = httpx.Client(transport=httpx.MockTransport(handler), timeout=1.0)
+    with LexAlignClient(cfg, http_client=http) as client:
+        client.check("x")
+    assert captured["headers"]["x-lexalign-agent-model"] == "sonnet"
+    assert captured["headers"]["x-lexalign-agent-version"] == "4.6"
+
+
+def test_agent_headers_omitted_when_unset(monkeypatch):
+    """If neither kwargs nor env vars supply an identity, the client
+    omits the headers entirely; the server then buckets the row as
+    "unknown agent" rather than rejecting it."""
+    captured: dict = {}
+
+    def handler(request):
+        captured["headers"] = dict(request.headers)
+        return httpx.Response(200, json={
+            "verdict": "ALLOWED", "reason": "", "package": "x",
+            "version": None, "resolved_version": None, "registry_status": None,
+            "replacement": None, "version_constraint": None, "license": None,
+            "cve_ids": [], "max_cvss": None, "is_requestable": False,
+            "needs_rationale": False,
+        })
+
+    monkeypatch.delenv("LEXALIGN_AGENT_MODEL", raising=False)
+    monkeypatch.delenv("LEXALIGN_AGENT_VERSION", raising=False)
+    cfg = ClientConfig(project="demo", server_url="http://srv")
+    http = httpx.Client(transport=httpx.MockTransport(handler), timeout=1.0)
+    with LexAlignClient(cfg, http_client=http) as client:
+        client.check("x")
+    assert "x-lexalign-agent-model" not in captured["headers"]
+    assert "x-lexalign-agent-version" not in captured["headers"]
+
+
 def test_request_approval_returns_payload():
     captured: dict = {}
 

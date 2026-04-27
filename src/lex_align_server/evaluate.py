@@ -27,6 +27,7 @@ from .audit import (
     VERDICT_DENIED,
     VERDICT_PROVISIONALLY_ALLOWED,
 )
+from .auth import AgentInfo
 from .cache import JsonCache
 from .config import Settings
 from .cve import resolve_cves, CveInfo
@@ -116,8 +117,10 @@ async def evaluate(
     audit: AuditStore,
     settings: Settings,
     http_client: httpx.AsyncClient,
+    agent: Optional[AgentInfo] = None,
 ) -> EvaluationResult:
     """Single evaluation. Always writes one audit row before returning."""
+    agent = agent or AgentInfo()
     # Step 1 — registry verdict (only if a registry is configured).
     pkg_verdict: Optional[PackageVerdict] = None
     if registry is not None:
@@ -132,7 +135,7 @@ async def evaluate(
                 replacement=pkg_verdict.replacement,
                 version_constraint=pkg_verdict.version_constraint,
             )
-            await _audit(audit, result, project, requester, DENIAL_REGISTRY)
+            await _audit(audit, result, project, requester, agent, DENIAL_REGISTRY)
             return result
 
     # Step 2 — license + latest version (PyPI). We need PyPI even for known
@@ -180,7 +183,7 @@ async def evaluate(
             license=license_info.license_normalized if license_info else None,
             cves=cves,
         )
-        await _audit(audit, result, project, requester, DENIAL_CVE)
+        await _audit(audit, result, project, requester, agent, DENIAL_CVE)
         return result
 
     # Step 4 — license verdict for unknown-to-registry packages.
@@ -199,7 +202,7 @@ async def evaluate(
                 license=license_info.license_normalized,
                 cves=cves,
             )
-            await _audit(audit, result, project, requester, DENIAL_LICENSE)
+            await _audit(audit, result, project, requester, agent, DENIAL_LICENSE)
             return result
         # Unknown but license-passing → provisionally allowed.
         result = EvaluationResult(
@@ -219,7 +222,7 @@ async def evaluate(
             max_cvss=cves.max_score,
             is_requestable=True,
         )
-        await _audit(audit, result, project, requester, DENIAL_NONE)
+        await _audit(audit, result, project, requester, agent, DENIAL_NONE)
         return result
 
     # Step 5 — known-to-registry ALLOW or REQUIRE_PROPOSE.
@@ -238,7 +241,7 @@ async def evaluate(
             max_cvss=cves.max_score,
             is_requestable=False,
         )
-        await _audit(audit, result, project, requester, DENIAL_NONE)
+        await _audit(audit, result, project, requester, agent, DENIAL_NONE)
         return result
 
     needs_rationale = pkg_verdict.action is Action.REQUIRE_PROPOSE
@@ -258,7 +261,7 @@ async def evaluate(
         is_requestable=False,
         needs_rationale=needs_rationale,
     )
-    await _audit(audit, result, project, requester, DENIAL_NONE)
+    await _audit(audit, result, project, requester, agent, DENIAL_NONE)
     return result
 
 
@@ -267,6 +270,7 @@ async def _audit(
     result: EvaluationResult,
     project: str,
     requester: str,
+    agent: AgentInfo,
     denial_category: str,
 ) -> None:
     await audit.record_evaluation(
@@ -283,5 +287,7 @@ async def _audit(
             cve_ids=result.cve_ids,
             max_cvss=result.max_cvss,
             registry_status=result.registry_status,
+            agent_model=agent.model,
+            agent_version=agent.version,
         )
     )

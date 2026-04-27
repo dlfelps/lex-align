@@ -21,6 +21,14 @@ from .config import ClientConfig
 
 
 PROJECT_HEADER = "X-LexAlign-Project"
+AGENT_MODEL_HEADER = "X-LexAlign-Agent-Model"
+AGENT_VERSION_HEADER = "X-LexAlign-Agent-Version"
+
+# Env vars the client reads when no explicit agent kwargs are passed.
+# Set these in the Claude Code env block so every check/request-approval
+# tags the audit row with the model that initiated it.
+AGENT_MODEL_ENV = "LEXALIGN_AGENT_MODEL"
+AGENT_VERSION_ENV = "LEXALIGN_AGENT_VERSION"
 
 
 class ServerError(RuntimeError):
@@ -93,10 +101,30 @@ class Verdict:
 
 
 class LexAlignClient:
-    def __init__(self, config: ClientConfig, http_client: httpx.Client | None = None):
+    def __init__(
+        self,
+        config: ClientConfig,
+        http_client: httpx.Client | None = None,
+        *,
+        agent_model: Optional[str] = None,
+        agent_version: Optional[str] = None,
+    ):
         self.config = config
         self._http = http_client or httpx.Client(timeout=5.0)
         self._owns_client = http_client is None
+        # Explicit kwargs win, then env vars, then None. The agent identity
+        # is purely informational (it tags audit rows for the dashboards),
+        # so we never reject a request because it's missing.
+        self.agent_model = (
+            agent_model
+            if agent_model is not None
+            else (os.environ.get(AGENT_MODEL_ENV) or None)
+        )
+        self.agent_version = (
+            agent_version
+            if agent_version is not None
+            else (os.environ.get(AGENT_VERSION_ENV) or None)
+        )
 
     def __enter__(self) -> "LexAlignClient":
         return self
@@ -113,6 +141,10 @@ class LexAlignClient:
             token = os.environ.get(self.config.api_key_env_var)
             if token:
                 h["Authorization"] = f"Bearer {token}"
+        if self.agent_model:
+            h[AGENT_MODEL_HEADER] = self.agent_model
+        if self.agent_version:
+            h[AGENT_VERSION_HEADER] = self.agent_version
         return h
 
     # ── public API ─────────────────────────────────────────────────────────

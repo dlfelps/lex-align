@@ -8,11 +8,20 @@ before the pre-commit gate fires.
 from __future__ import annotations
 
 import json
+import os
+import re
 import sys
 from pathlib import Path
 from typing import Optional
 
-from .api import LexAlignClient, ServerError, ServerUnreachable, Verdict
+from .api import (
+    AGENT_MODEL_ENV,
+    AGENT_VERSION_ENV,
+    LexAlignClient,
+    ServerError,
+    ServerUnreachable,
+    Verdict,
+)
 from .config import ClientConfig, find_project_root, load_config
 from .pyproject_utils import (
     apply_edit,
@@ -20,6 +29,53 @@ from .pyproject_utils import (
     extract_pinned_version,
     get_runtime_deps,
 )
+
+
+# Splits a Claude model id like "claude-opus-4-7-20251001" or a friendlier
+# "Opus 4.7" into a (model, version) pair so the report's Agent column stays
+# human-readable: "opus" + "4.7", not the raw 20251001 build tag.
+# The version pattern intentionally caps at two segments — Claude IDs use
+# `family-major-minor-buildtag`, so a third dotted segment here would
+# greedily eat the build date.
+_MODEL_ID_RE = re.compile(
+    r"^(?:claude-)?(?P<model>[a-zA-Z]+)[-\s_]+(?P<version>\d+(?:[._\-]\d+)?)"
+)
+
+
+def _detect_agent(event: dict) -> tuple[Optional[str], Optional[str]]:
+    """Best-effort agent identification.
+
+    Order of precedence:
+      1. LEXALIGN_AGENT_MODEL / LEXALIGN_AGENT_VERSION (operator-set in
+         the Claude Code env block — wins because it's explicit).
+      2. A `model` field on the hook event (some Claude Code releases
+         include it; tolerate it being absent).
+      3. CLAUDE_MODEL / CLAUDE_CODE_MODEL env vars some sandboxes inject.
+    Returns `(None, None)` when nothing is detectable; the server tags
+    those audit rows under "(unknown agent)" rather than rejecting them.
+    """
+    model = (os.environ.get(AGENT_MODEL_ENV) or "").strip() or None
+    version = (os.environ.get(AGENT_VERSION_ENV) or "").strip() or None
+    if model and version:
+        return model, version
+
+    raw = (
+        event.get("model")
+        or event.get("agent_model")
+        or (event.get("session", {}) or {}).get("model")
+        or os.environ.get("CLAUDE_MODEL")
+        or os.environ.get("CLAUDE_CODE_MODEL")
+    )
+    if raw:
+        m = _MODEL_ID_RE.match(str(raw))
+        if m:
+            model = model or m.group("model").lower()
+            # Normalize "4-7" → "4.7" so identical model versions reported
+            # in either separator collapse onto one bucket in the report.
+            version = version or m.group("version").replace("_", ".").replace("-", ".")
+        else:
+            model = model or str(raw)
+    return model, version
 
 
 def _read_event() -> dict:
@@ -40,13 +96,26 @@ def _emit_pretool_decision(decision: str, message: str | None = None) -> None:
 
 def handle_session_start(event: dict, project_root: Path, config: ClientConfig) -> str:
     deps = get_runtime_deps(project_root / "pyproject.toml")
+    model, version = _detect_agent(event)
+    # Persist the detected identity into the env so downstream
+    # `lex-align-client check` / `request-approval` invocations from this
+    # session inherit it without each one having to re-derive it.
+    if model and not os.environ.get(AGENT_MODEL_ENV):
+        os.environ[AGENT_MODEL_ENV] = model
+    if version and not os.environ.get(AGENT_VERSION_ENV):
+        os.environ[AGENT_VERSION_ENV] = version
+
+    agent_label = " ".join(filter(None, [model, version])) or "(unknown)"
     lines = [
         f"# lex-align session brief — project: {config.project}",
         f"Server: {config.server_url} (mode: {config.mode})",
+        f"Agent: {agent_label}",
         f"Tracked runtime dependencies: {len(deps)}",
     ]
     try:
-        with LexAlignClient(config) as client:
+        with LexAlignClient(
+            config, agent_model=model, agent_version=version
+        ) as client:
             health = client.health()
         lines.append(
             f"Health: redis={health.get('redis')} db={health.get('db')} "
@@ -103,10 +172,13 @@ def handle_pre_tool_use(
     for name in sorted(removed):
         header.append(f"  - {name}")
 
+    model, version = _detect_agent(event)
     blocks: list[str] = []
     notes: list[str] = []
     try:
-        with LexAlignClient(config) as client:
+        with LexAlignClient(
+            config, agent_model=model, agent_version=version
+        ) as client:
             for name, spec in sorted(added.items()):
                 version = extract_pinned_version(spec)
                 v = client.check(name, version)
