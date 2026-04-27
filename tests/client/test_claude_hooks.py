@@ -139,3 +139,61 @@ def test_session_start_brief_includes_project(tmp_path: Path, monkeypatch):
     text = claude_hooks.handle_session_start({}, tmp_path, config)
     assert "project: demo" in text
     assert "Tracked runtime dependencies: 2" in text
+
+
+def test_detect_agent_prefers_explicit_env(monkeypatch):
+    """LEXALIGN_AGENT_* env vars are the explicit, operator-set source of
+    truth — they win over anything the event payload claims."""
+    monkeypatch.setenv("LEXALIGN_AGENT_MODEL", "opus")
+    monkeypatch.setenv("LEXALIGN_AGENT_VERSION", "4.7")
+    monkeypatch.delenv("CLAUDE_MODEL", raising=False)
+    model, version = claude_hooks._detect_agent({"model": "claude-sonnet-4-6"})
+    assert (model, version) == ("opus", "4.7")
+
+
+def test_detect_agent_parses_event_model_id(monkeypatch):
+    """A raw model id like `claude-opus-4-7-20251001` should normalize to
+    `opus` / `4.7` — strip the build tag, drop the `claude-` prefix, and
+    convert `-` to `.` in the version."""
+    monkeypatch.delenv("LEXALIGN_AGENT_MODEL", raising=False)
+    monkeypatch.delenv("LEXALIGN_AGENT_VERSION", raising=False)
+    monkeypatch.delenv("CLAUDE_MODEL", raising=False)
+    model, version = claude_hooks._detect_agent({"model": "claude-opus-4-7-20251001"})
+    assert model == "opus"
+    assert version == "4.7"
+
+
+def test_detect_agent_returns_none_when_nothing_known(monkeypatch):
+    monkeypatch.delenv("LEXALIGN_AGENT_MODEL", raising=False)
+    monkeypatch.delenv("LEXALIGN_AGENT_VERSION", raising=False)
+    monkeypatch.delenv("CLAUDE_MODEL", raising=False)
+    monkeypatch.delenv("CLAUDE_CODE_MODEL", raising=False)
+    assert claude_hooks._detect_agent({}) == (None, None)
+
+
+def test_pre_tool_use_passes_agent_to_client(tmp_path: Path, monkeypatch):
+    """The hook should hand the detected agent identity into LexAlignClient
+    so the X-LexAlign-Agent-* headers get attached to /evaluate calls."""
+    _seed(tmp_path, ["click"])
+    monkeypatch.setenv("LEXALIGN_AGENT_MODEL", "opus")
+    monkeypatch.setenv("LEXALIGN_AGENT_VERSION", "4.7")
+
+    captured: dict = {}
+
+    def factory(cfg, **kwargs):
+        captured["kwargs"] = kwargs
+        return _StubClient({})
+
+    monkeypatch.setattr(claude_hooks, "LexAlignClient", factory)
+    config = ClientConfig(project="demo")
+    event = {
+        "tool_name": "Edit",
+        "tool_input": {
+            "path": str(tmp_path / "pyproject.toml"),
+            "old_string": '"click"',
+            "new_string": '"click", "httpx"',
+        },
+    }
+    claude_hooks.handle_pre_tool_use(event, tmp_path, config)
+    assert captured["kwargs"]["agent_model"] == "opus"
+    assert captured["kwargs"]["agent_version"] == "4.7"

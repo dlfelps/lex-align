@@ -132,7 +132,10 @@
 <h1>{{ title }}</h1>
 <p class="subtitle">
   Edit packages and policies in your browser, then export the result as YAML.
-  <strong>Changes are not saved on the server</strong> — export before you leave.
+  Classifying a pending request also updates the <strong>in-memory</strong>
+  registry so live <code>/evaluate</code> calls see the new rule immediately,
+  but to make the change survive a restart you still must
+  <strong>export the YAML and rebuild the server image</strong>.
 </p>
 
 <div id="meta" class="meta"></div>
@@ -482,7 +485,7 @@ function closeDialog() {
   document.getElementById("edit-dialog").close();
 }
 
-function saveDialog(ev) {
+async function saveDialog(ev) {
   ev.preventDefault();
   const name = document.getElementById("f-name").value.trim();
   const rule = {
@@ -498,7 +501,7 @@ function saveDialog(ev) {
   if (reason) rule.reason = reason;
 
   const errs = validatePackage(name, rule);
-  if (editingName === null && registry.packages[name]) {
+  if (editingName === null && registry.packages[name] && !pendingNormalizedName) {
     errs.push(`A package named "${name}" already exists.`);
   }
   if (errs.length) {
@@ -508,15 +511,38 @@ function saveDialog(ev) {
     return;
   }
 
+  // When this dialog was opened from the pending panel, mutate the
+  // server's in-memory registry so subsequent /evaluate calls see the
+  // classification immediately. For a plain edit we keep the change
+  // browser-only — exporting YAML is still the only persistence path.
+  const fromPending = pendingNormalizedName !== null;
+  if (fromPending) {
+    const r = await fetch("/api/v1/registry/packages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, ...rule }),
+    });
+    if (!r.ok) {
+      const err = await r.json().catch(() => ({ detail: r.statusText }));
+      const box = document.getElementById("form-error");
+      box.textContent = `Server rejected classification: ${err.detail || r.statusText}`;
+      box.classList.add("visible");
+      return;
+    }
+    const body = await r.json().catch(() => ({}));
+    toast(
+      `Classified ${name}` +
+      (body.approved_requests ? ` (${body.approved_requests} request(s) approved)` : "") +
+      " — export YAML to persist."
+    );
+  } else {
+    toast(editingName === null ? `Added ${name}` : `Updated ${name}`);
+  }
+
   registry.packages[name] = rule;
-  const acceptKey = pendingNormalizedName;
+  pendingNormalizedName = null;
   closeDialog();
   rerender();
-  toast(editingName === null ? `Added ${name}` : `Updated ${name}`);
-  if (acceptKey) {
-    fetch(`/api/v1/registry/pending/${encodeURIComponent(acceptKey)}/accept`, { method: "POST" })
-      .catch(() => {});  // fire-and-forget; UI already updated
-  }
 }
 
 // --- YAML emit (small dialect-specific writer) -----------------------------

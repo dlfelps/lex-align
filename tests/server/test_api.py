@@ -169,6 +169,9 @@ def test_dashboards_render_when_auth_disabled(tmp_path):
         r = client.get("/dashboard/registry")
         assert r.status_code == 200
         assert "Registry workshop" in r.text
+        a = client.get("/dashboard/agents")
+        assert a.status_code == 200
+        assert "Agent activity" in a.text
 
 
 def test_registry_endpoint_returns_yaml_shape(tmp_path):
@@ -199,6 +202,105 @@ packages:
         body = r.json()
         assert body["version"] == "1.0"
         assert body["packages"]["httpx"]["status"] == "preferred"
+
+
+def test_evaluate_records_agent_headers_in_audit_row(tmp_path):
+    """The X-LexAlign-Agent-Model and -Version headers reported by the
+    client must end up on the audit row so reports can group by them."""
+    with TestClient(_build_app(tmp_path)) as client:
+        r = client.get(
+            "/api/v1/evaluate",
+            params={"package": "requests"},  # deprecated → DENIED → audit row
+            headers={
+                "X-LexAlign-Project": "demo",
+                "X-LexAlign-Agent-Model": "opus",
+                "X-LexAlign-Agent-Version": "4.7",
+            },
+        )
+        assert r.status_code == 200
+        legal = client.get("/api/v1/reports/legal").json()  # registry blocks → no rows here
+        # Registry-category denials show up in the agents report instead.
+        agents = client.get("/api/v1/reports/agents").json()
+    by_key = {(a["agent_model"], a["agent_version"]): a for a in agents["agents"]}
+    assert by_key[("opus", "4.7")]["evaluations"] >= 1
+    assert by_key[("opus", "4.7")]["denials"] >= 1
+
+
+def test_approval_request_records_agent_identity(tmp_path):
+    with TestClient(_build_app(tmp_path)) as client:
+        r = client.post(
+            "/api/v1/approval-requests",
+            json={"package": "newpkg", "rationale": "needed"},
+            headers={
+                "X-LexAlign-Project": "demo",
+                "X-LexAlign-Agent-Model": "opus",
+                "X-LexAlign-Agent-Version": "4.7",
+            },
+        )
+        assert r.status_code == 202
+        body = r.json()
+        assert body["agent_model"] == "opus"
+        assert body["agent_version"] == "4.7"
+        items = client.get("/api/v1/reports/approval-requests").json()["items"]
+        assert items[0]["agent_model"] == "opus"
+        assert items[0]["agent_version"] == "4.7"
+
+
+def test_classify_endpoint_mutates_in_memory_registry(tmp_path):
+    """POST /api/v1/registry/packages adds the package to the live
+    registry, flips its pending requests to APPROVED, and the next
+    /evaluate call sees the new rule (no restart required)."""
+    with TestClient(_build_app(tmp_path)) as client:
+        # Two devs ask for `requests-cache`; nothing in the registry yet.
+        client.post("/api/v1/approval-requests",
+                    json={"package": "requests-cache", "rationale": "need"},
+                    headers={"X-LexAlign-Project": "p1"})
+        client.post("/api/v1/approval-requests",
+                    json={"package": "requests_cache", "rationale": "also"},
+                    headers={"X-LexAlign-Project": "p2"})
+
+        # Operator classifies it as banned, with a reason.
+        r = client.post("/api/v1/registry/packages", json={
+            "name": "requests-cache",
+            "status": "banned",
+            "reason": "policy",
+        })
+        assert r.status_code == 200
+        body = r.json()
+        assert body["normalized_name"] == "requests_cache"
+        assert body["approved_requests"] == 2
+        assert body["persisted"] is False
+        assert "rebuild" in body["note"].lower()
+
+        # Subsequent /evaluate call sees the new rule immediately.
+        v = client.get(
+            "/api/v1/evaluate",
+            params={"package": "requests-cache"},
+            headers={"X-LexAlign-Project": "demo"},
+        )
+        assert v.status_code == 200
+        assert v.json()["verdict"] == "DENIED"
+        assert v.json()["registry_status"] == "banned"
+
+        # Pending panel no longer surfaces it.
+        pending = client.get("/api/v1/registry/pending").json()["items"]
+        assert all(p["normalized_name"] != "requests_cache" for p in pending)
+
+        # The dashboard's GET /registry reflects the in-memory mutation.
+        reg = client.get("/api/v1/registry").json()
+        assert reg["packages"]["requests_cache"]["status"] == "banned"
+
+
+def test_classify_endpoint_rejects_invalid_rule(tmp_path):
+    """Validation matches the YAML-compile path: deprecated without
+    replacement fails the same way it would in CI."""
+    with TestClient(_build_app(tmp_path)) as client:
+        r = client.post("/api/v1/registry/packages", json={
+            "name": "foo",
+            "status": "deprecated",  # missing required `replacement`
+        })
+        assert r.status_code == 400
+        assert "replacement" in r.json()["detail"]
 
 
 def test_pending_endpoint_filters_registered_and_groups(tmp_path):

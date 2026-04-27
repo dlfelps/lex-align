@@ -1,11 +1,14 @@
 """Dashboard pages.
 
-Three pages render server-side and fetch their data from the JSON API:
-- /dashboard/security and /dashboard/legal show read-only reports.
+Four pages render server-side and fetch their data from the JSON API:
+- /dashboard/security, /dashboard/legal and /dashboard/agents show
+  read-only reports.
 - /dashboard/registry is an interactive workshop: it loads the live
-  registry, lets the operator add/edit/delete entries in-browser, and
-  exports the result as YAML. Edits never round-trip to the server, so
-  they cannot affect live evaluation.
+  registry, lets the operator triage pending approval requests, and
+  exports the result as YAML. Classifying a pending request also
+  updates the in-memory registry so live `/evaluate` calls see the
+  rule immediately, but persistence still requires exporting the YAML
+  and rebuilding the server image.
 """
 
 from __future__ import annotations
@@ -35,6 +38,14 @@ async def legal_dashboard(request: Request) -> HTMLResponse:
     return templates.TemplateResponse(
         request, "report.html",
         {"title": "Legal report", "endpoint": "/api/v1/reports/legal"},
+    )
+
+
+@router.get("/dashboard/agents", response_class=HTMLResponse)
+async def agents_dashboard(request: Request) -> HTMLResponse:
+    return templates.TemplateResponse(
+        request, "report.html",
+        {"title": "Agent activity", "endpoint": "/api/v1/reports/agents"},
     )
 
 

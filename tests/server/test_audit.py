@@ -149,3 +149,122 @@ async def test_projects_summary(store):
     assert summary["p1"]["evaluations"] == 2
     assert summary["p1"]["denials"] == 1
     assert summary["p2"]["approval_requests"] == 1
+
+
+@pytest.mark.asyncio
+async def test_audit_record_persists_agent_identity(store):
+    """The agent_model + agent_version columns survive a round-trip and
+    surface in the legal/security report rows so the dashboard can render
+    them without an extra join."""
+    await store.record_evaluation(AuditRecord(
+        project="p1", requester="anon", package="gplpkg", version=None,
+        resolved_version=None, verdict=VERDICT_DENIED,
+        denial_category=DENIAL_LICENSE, reason="GPL", license="GPL-3.0",
+        agent_model="opus", agent_version="4.7",
+    ))
+    legal = await store.legal_report()
+    assert legal["recent"][0]["agent_model"] == "opus"
+    assert legal["recent"][0]["agent_version"] == "4.7"
+
+
+@pytest.mark.asyncio
+async def test_agents_report_aggregates_by_agent(store):
+    """agents_report groups by (model, version) and counts denials +
+    provisional separately so operators can see which agent generates
+    which kinds of friction."""
+    from lex_align_server.audit import VERDICT_PROVISIONALLY_ALLOWED
+
+    common = dict(
+        project="p1", requester="anon", version=None, resolved_version=None,
+        denial_category=DENIAL_NONE, reason="",
+    )
+    await store.record_evaluation(AuditRecord(
+        package="x", verdict=VERDICT_ALLOWED,
+        agent_model="opus", agent_version="4.7", **common,
+    ))
+    await store.record_evaluation(AuditRecord(
+        package="y", verdict=VERDICT_PROVISIONALLY_ALLOWED,
+        agent_model="opus", agent_version="4.7", **common,
+    ))
+    denied_kwargs = {**common, "denial_category": DENIAL_LICENSE, "reason": "x"}
+    await store.record_evaluation(AuditRecord(
+        package="z", verdict=VERDICT_DENIED,
+        agent_model="opus", agent_version="4.7", **denied_kwargs,
+    ))
+    await store.record_evaluation(AuditRecord(
+        package="x", verdict=VERDICT_ALLOWED,
+        agent_model="sonnet", agent_version="4.6", **common,
+    ))
+    # Anonymous (no agent headers) — must bucket under (None, None) rather
+    # than dropping the row.
+    await store.record_evaluation(AuditRecord(
+        package="x", verdict=VERDICT_ALLOWED, **common,
+    ))
+
+    report = await store.agents_report()
+    by_key = {(a["agent_model"], a["agent_version"]): a for a in report["agents"]}
+    assert by_key[("opus", "4.7")]["evaluations"] == 3
+    assert by_key[("opus", "4.7")]["denials"] == 1
+    assert by_key[("opus", "4.7")]["provisional"] == 1
+    assert by_key[("sonnet", "4.6")]["evaluations"] == 1
+    assert by_key[(None, None)]["evaluations"] == 1
+
+
+@pytest.mark.asyncio
+async def test_mark_approved_by_package_flips_pending_for_normalized_name(store):
+    """Classifying a package via the dashboard should approve every
+    pending request whose normalized name matches — including names that
+    differ only in case or hyphen vs. underscore — and leave unrelated
+    requests untouched."""
+    await store.upsert_approval_request(ApprovalRequest(
+        project="p1", requester="alice", package="Some-Pkg", rationale="x",
+    ))
+    await store.upsert_approval_request(ApprovalRequest(
+        project="p2", requester="bob", package="some_pkg", rationale="y",
+    ))
+    await store.upsert_approval_request(ApprovalRequest(
+        project="p1", requester="alice", package="other", rationale="z",
+    ))
+
+    flipped = await store.mark_approved_by_package("some_pkg")
+    assert flipped == 2
+
+    pending = await store.list_pending_by_package()
+    pending_names = {p["normalized_name"] for p in pending}
+    assert "some_pkg" not in pending_names
+    assert "other" in pending_names
+
+
+@pytest.mark.asyncio
+async def test_audit_migration_adds_agent_columns_to_old_db(tmp_path):
+    """A pre-Phase-3 SQLite file (without agent_* columns) must upgrade
+    cleanly when the new server boots against it."""
+    import aiosqlite
+    db_path = tmp_path / "old.sqlite"
+    async with aiosqlite.connect(db_path) as db:
+        await db.executescript("""
+            CREATE TABLE audit_log (
+                id TEXT PRIMARY KEY, ts TEXT, project TEXT, requester TEXT,
+                package TEXT, version TEXT, resolved_version TEXT,
+                verdict TEXT, denial_category TEXT, reason TEXT,
+                license TEXT, cve_ids TEXT, max_cvss REAL, registry_status TEXT
+            );
+            CREATE TABLE approval_requests (
+                id TEXT PRIMARY KEY, ts TEXT, project TEXT, requester TEXT,
+                package TEXT, rationale TEXT, status TEXT, last_audit_id TEXT
+            );
+        """)
+        await db.commit()
+
+    s = AuditStore(db_path)
+    await s.init()
+    # Inserting a row with an agent identity must succeed against the
+    # migrated schema — proving the ALTER TABLE ran.
+    await s.record_evaluation(AuditRecord(
+        project="p", requester="a", package="x", version=None,
+        resolved_version=None, verdict=VERDICT_ALLOWED,
+        denial_category=DENIAL_NONE, reason="",
+        agent_model="opus", agent_version="4.7",
+    ))
+    legal = await s.legal_report()
+    assert legal["total_denials"] == 0  # call works against migrated schema

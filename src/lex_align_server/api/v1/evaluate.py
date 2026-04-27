@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Query, Request
 
-from ...auth import get_project
+from ...auth import AgentInfo, get_agent_info, get_project
 from ...evaluate import evaluate
 
 
@@ -17,6 +17,7 @@ async def evaluate_endpoint(
     package: str = Query(..., min_length=1),
     version: str | None = Query(None),
     project: str = Depends(get_project),
+    agent: AgentInfo = Depends(get_agent_info),
 ) -> dict:
     state = request.app.state.lex
     requester = "anonymous"  # auth wiring lands in org-mode
@@ -25,6 +26,7 @@ async def evaluate_endpoint(
         version=version,
         project=project,
         requester=requester,
+        agent=agent,
         registry=state.registry,
         cache=state.cache,
         audit=state.audit,
