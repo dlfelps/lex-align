@@ -101,6 +101,30 @@ time" rather than "denied dep slips through". [Full breakdown →](agent-support
 
 ---
 
+## How lex-align compares
+
+Most existing tools catch problems *after* a PR is open. `lex-align` is
+narrower in scope (Python only) but enforces policy *before* the bytes
+hit disk, with a closed-enum verdict that AI agents can branch on.
+
+| Feature                       | Dependabot | Snyk     | FOSSA   | lex-align   |
+|-------------------------------|:----------:|:--------:|:-------:|:-----------:|
+| CVE checking                  | ✅         | ✅       | ✅      | ✅          |
+| License compliance            | ❌         | ✅       | ✅      | ✅          |
+| Approved registry enforcement | ❌         | ❌       | ❌      | ✅          |
+| Pre-commit interception       | ❌         | ❌       | ❌      | ✅          |
+| AI agent integration          | ❌         | ❌       | ❌      | ✅          |
+| Language support              | 20+        | 10+      | 20+     | Python only |
+| Cost                          | Free       | Freemium | Paid    | Free        |
+| Self-hosted                   | ✅         | Partial  | Partial | ✅          |
+
+The bottom three rows are where `lex-align` differs in kind, not just
+degree: an approved-registry gate, an edit-time `PreToolUse` intercept,
+and an auto-written `CLAUDE.md` so agents pre-flight every dep without
+being asked.
+
+---
+
 ## Getting started
 
 The shortest path from zero to a working `check`:
