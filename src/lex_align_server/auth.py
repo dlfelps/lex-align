@@ -1,16 +1,22 @@
 """Auth dependencies.
 
-When `AUTH_ENABLED=false` (default) every request is treated as anonymous.
-When `AUTH_ENABLED=true` the bearer token is required but the validation/key
-storage is intentionally a Phase-3 stub. Wire-up exists so callers don't need
-to change when org-mode lands.
+The actual identity resolution lives in the pluggable authenticator on
+``app.state.lex.authenticator`` (see ``authn/``). These functions are
+thin FastAPI ``Depends`` shims so endpoints can stay declarative:
+
+    requester: str = Depends(get_requester)
+    identity: Identity = Depends(get_identity)
+
+Single-user mode ships an ``AnonymousAuthenticator`` so the same code
+path works without any auth setup; org mode swaps in whatever the
+operator configured via ``AUTH_BACKEND``.
 """
 
 from __future__ import annotations
 
-from fastapi import Header, HTTPException, status
+from fastapi import Depends, Header, HTTPException, Request, status
 
-from .config import Settings
+from .authn import Identity
 
 
 PROJECT_HEADER = "X-LexAlign-Project"
@@ -27,19 +33,17 @@ async def get_project(
     return x_lexalign_project.strip()
 
 
-async def get_requester(
-    settings_dep: Settings,
-    authorization: str | None = Header(None),
-) -> str:
-    if not settings_dep.auth_enabled:
-        return "anonymous"
-    if not authorization or not authorization.lower().startswith("bearer "):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Bearer token required when AUTH_ENABLED=true.",
-        )
-    # Phase 3+: validate against api_keys table and return key id.
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail="Org-mode auth is not yet implemented.",
-    )
+async def get_identity(request: Request) -> Identity:
+    """Resolve the requester via the per-app authenticator.
+
+    Endpoints depend on this when they need email/groups (e.g. for
+    future per-team authorization). For the common "I just need a
+    string for the audit log" case, depend on :func:`get_requester`
+    instead.
+    """
+    return await request.app.state.lex.authenticator.authenticate(request)
+
+
+async def get_requester(identity: Identity = Depends(get_identity)) -> str:
+    """The principal id, suitable for ``audit_log.requester``."""
+    return identity.id

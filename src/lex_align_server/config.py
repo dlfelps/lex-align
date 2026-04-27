@@ -17,8 +17,25 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="", case_sensitive=False)
 
-    # Auth (org-mode is a Phase-3+ deferred implementation; flag is wired now).
+    # Auth. ``auth_enabled`` is the master switch — when false, every request
+    # is anonymous regardless of ``auth_backend``. When true, ``auth_backend``
+    # selects how the requester is identified. See docs/org-mode-auth.md.
     auth_enabled: bool = False
+    auth_backend: str = "header"  # header | webhook | apikey | anonymous | module:path:Class
+
+    # Header backend (recommended): trust these from an upstream auth gateway.
+    auth_user_header: str = "X-Forwarded-User"
+    auth_email_header: str = "X-Forwarded-Email"
+    auth_groups_header: str = "X-Forwarded-Groups"
+    auth_groups_separator: str = ","
+    # Comma-separated CIDRs of proxies whose forwarded-* headers we honour.
+    # Requests from outside these CIDRs are rejected even if the headers are
+    # set, since otherwise a direct caller could spoof identity.
+    auth_trusted_proxies: str = "127.0.0.1/32,::1/128"
+
+    # Webhook backend: POST {"token": "..."} to this URL; expect identity JSON.
+    auth_verify_url: Optional[str] = None
+    auth_verify_timeout: float = 3.0
 
     # Network bind. Single-user mode binds 127.0.0.1; org-mode operators are
     # expected to override to 0.0.0.0 (and turn on auth_enabled).

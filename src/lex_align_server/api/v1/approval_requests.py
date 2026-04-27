@@ -13,7 +13,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from ...audit import APPROVAL_PENDING, ApprovalRequest
-from ...auth import get_project
+from ...auth import get_project, get_requester
 
 
 router = APIRouter()
@@ -30,9 +30,9 @@ async def create_approval_request(
     request: Request,
     body: ApprovalRequestBody,
     project: str = Depends(get_project),
+    requester: str = Depends(get_requester),
 ) -> JSONResponse:
     state = request.app.state.lex
-    requester = "anonymous"
     req = ApprovalRequest(
         project=project,
         requester=requester,

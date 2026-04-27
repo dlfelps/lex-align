@@ -18,6 +18,7 @@ from lex_align_server.api.v1 import (
     reports as reports_router,
 )
 from lex_align_server.audit import AuditStore
+from lex_align_server.authn import load_authenticator
 from lex_align_server.cache import JsonCache
 from lex_align_server.config import Settings
 from lex_align_server.dashboards import router as dashboards_router
@@ -57,12 +58,13 @@ def _registry() -> Registry:
     })
 
 
-def _build_app(tmp_path, *, auth_enabled: bool = False) -> FastAPI:
+def _build_app(tmp_path, *, auth_enabled: bool = False, **settings_overrides) -> FastAPI:
     settings = Settings(
         database_path=tmp_path / "audit.sqlite",
         auth_enabled=auth_enabled,
         osv_api_url="https://osv.test/v1/query",
         pypi_api_url="https://pypi.test/pypi",
+        **settings_overrides,
     )
 
     @asynccontextmanager
@@ -84,6 +86,7 @@ def _build_app(tmp_path, *, auth_enabled: bool = False) -> FastAPI:
         app.state.lex = AppState(
             settings=settings, cache=cache, audit=audit,
             http=client, registry=_registry(),
+            authenticator=load_authenticator(settings, client),
         )
         yield
         await client.aclose()
@@ -96,6 +99,43 @@ def _build_app(tmp_path, *, auth_enabled: bool = False) -> FastAPI:
     app.include_router(health_router.router, prefix="/api/v1")
     app.include_router(dashboards_router.router)
     return app
+
+
+# The CIDR check is unit-tested in tests/server/test_authn.py — these
+# end-to-end tests verify the rest of the pipeline (header read → audit
+# row), so they widen trusted_proxies to accept FastAPI TestClient's
+# synthetic origin.
+_TRUST_ALL = "0.0.0.0/0,::/0"
+
+
+def test_org_mode_with_header_backend_accepts_forwarded_user(tmp_path):
+    """AUTH_ENABLED=true + header backend resolves the requester from
+    X-Forwarded-User and the request reaches the evaluator."""
+    app = _build_app(tmp_path, auth_enabled=True, auth_trusted_proxies=_TRUST_ALL)
+    with TestClient(app) as client:
+        r = client.get(
+            "/api/v1/evaluate",
+            params={"package": "httpx"},
+            headers={
+                "X-LexAlign-Project": "demo",
+                "X-Forwarded-User": "alice@example.com",
+            },
+        )
+        assert r.status_code == 200, r.text
+
+
+def test_org_mode_rejects_request_missing_forwarded_user(tmp_path):
+    """Without an X-Forwarded-User header the request is rejected with
+    401 — fails closed when the upstream proxy isn't injecting identity."""
+    app = _build_app(tmp_path, auth_enabled=True, auth_trusted_proxies=_TRUST_ALL)
+    with TestClient(app) as client:
+        r = client.get(
+            "/api/v1/evaluate",
+            params={"package": "httpx"},
+            headers={"X-LexAlign-Project": "demo"},
+        )
+        assert r.status_code == 401
+        assert "X-Forwarded-User" in r.json()["detail"]
 
 
 def test_evaluate_requires_project_header(tmp_path):
@@ -280,6 +320,7 @@ def test_legal_and_security_reports_separate_categories(tmp_path):
         app.state.lex = AppState(
             settings=settings, cache=cache, audit=audit,
             http=client, registry=_registry(),
+            authenticator=load_authenticator(settings, client),
         )
         yield
         await client.aclose()

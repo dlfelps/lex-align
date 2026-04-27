@@ -20,6 +20,7 @@ from .api.v1 import health as health_router
 from .api.v1 import registry as registry_router
 from .api.v1 import reports as reports_router
 from .audit import AuditStore
+from .authn import load_authenticator
 from .cache import JsonCache
 from .config import Settings, get_settings
 from .dashboards import router as dashboards_router
@@ -47,12 +48,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
         else:
             logger.warning("no registry loaded (REGISTRY_PATH unset or missing)")
+        authenticator = load_authenticator(settings, http_client)
+        logger.info(
+            "auth: enabled=%s backend=%s",
+            settings.auth_enabled, type(authenticator).__name__,
+        )
         app.state.lex = AppState(
             settings=settings,
             cache=cache,
             audit=audit,
             http=http_client,
             registry=registry,
+            authenticator=authenticator,
         )
         try:
             yield
