@@ -4,30 +4,232 @@
 <meta charset="utf-8">
 <title>{{ title }}</title>
 <style>
-  body { font-family: system-ui, sans-serif; max-width: 960px; margin: 2rem auto; padding: 0 1rem; }
-  pre  { background: #f4f4f4; padding: 1rem; overflow-x: auto; }
-  label { display: inline-block; margin-right: 0.5rem; }
+  :root {
+    --border: #e3e3e3;
+    --bg: #fafafa;
+    --muted: #666;
+  }
+  body {
+    font-family: system-ui, sans-serif;
+    max-width: 1200px;
+    margin: 1.5rem auto;
+    padding: 0 1rem;
+    color: #222;
+  }
+  h1 { margin-bottom: 0.25rem; }
+  h2 { margin-top: 2rem; }
+  .subtitle { color: var(--muted); margin-top: 0; }
+  form#filter {
+    display: flex; gap: 0.5rem; align-items: center;
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: 6px; padding: 0.6rem; margin: 1rem 0;
+  }
+  input[type=text] { padding: 0.35rem 0.5rem; }
+  button {
+    background: #fff; border: 1px solid #bbb; border-radius: 4px;
+    padding: 0.35rem 0.7rem; cursor: pointer; font: inherit;
+  }
+  button:hover { background: #f0f0f0; }
+  .summary {
+    display: flex; gap: 1.5rem; align-items: baseline;
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: 6px; padding: 0.6rem 1rem; margin: 0.5rem 0 1rem;
+    font-size: 0.95rem;
+  }
+  .summary strong { font-size: 1.4rem; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.9rem; }
+  th, td {
+    text-align: left; padding: 0.4rem 0.6rem;
+    border-bottom: 1px solid var(--border); vertical-align: top;
+  }
+  th { background: var(--bg); }
+  tr:hover td { background: #fcfcfc; }
+  .agent {
+    display: inline-block; padding: 0.05rem 0.4rem; border-radius: 3px;
+    background: #eef2ff; color: #3730a3; font-size: 0.8rem;
+    font-family: ui-monospace, monospace;
+  }
+  .agent.unknown { background: #f3f4f6; color: #6b7280; }
+  .verdict-DENIED               { color: #b00; font-weight: 600; }
+  .verdict-PROVISIONALLY_ALLOWED{ color: #b97f00; font-weight: 600; }
+  .verdict-ALLOWED              { color: #0a8a6f; }
+  pre.raw {
+    background: #f4f4f4; padding: 0.75rem; border-radius: 4px;
+    overflow-x: auto; font-size: 0.8rem; max-height: 18rem;
+  }
+  details > summary { cursor: pointer; color: var(--muted); font-size: 0.9rem; }
+  .ts { white-space: nowrap; color: var(--muted); font-size: 0.85rem; }
+  .empty { padding: 1.5rem; text-align: center; color: var(--muted); }
 </style>
 </head>
 <body>
 <h1>{{ title }}</h1>
-<p>Read-only view of <code>{{ endpoint }}</code>. Filter by project below.</p>
+<p class="subtitle">Read-only view backed by <code>{{ endpoint }}</code>.</p>
 
 <form id="filter">
-  <label>Project: <input type="text" name="project" /></label>
+  <label>Project: <input type="text" name="project" placeholder="(all projects)"></label>
   <button type="submit">Reload</button>
 </form>
 
-<pre id="out">Loading…</pre>
+<div id="content">Loading…</div>
 
 <script>
-async function load() {
-  const params = new URLSearchParams(new FormData(document.getElementById('filter')));
-  const url = "{{ endpoint }}" + (params.toString() ? "?" + params : "");
-  const r = await fetch(url);
-  document.getElementById('out').textContent = JSON.stringify(await r.json(), null, 2);
+const ENDPOINT = "{{ endpoint }}";
+const TITLE = "{{ title }}";
+const IS_AGENTS = ENDPOINT.endsWith("/agents");
+
+function fmtTs(iso) {
+  if (!iso) return "";
+  try {
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return iso;
+    return d.toISOString().replace("T", " ").slice(0, 19) + " UTC";
+  } catch { return iso; }
 }
-document.getElementById('filter').addEventListener('submit', e => { e.preventDefault(); load(); });
+
+function agentBadge(model, version) {
+  if (!model && !version) return '<span class="agent unknown">unknown</span>';
+  const label = [model, version].filter(Boolean).join(" ");
+  return `<span class="agent">${escape(label)}</span>`;
+}
+
+function escape(s) {
+  return String(s == null ? "" : s)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function renderDenialReport(data) {
+  const c = document.createElement("div");
+  const total = data.total_denials || 0;
+  const recent = data.recent || [];
+  c.innerHTML = `
+    <div class="summary">
+      <span><strong>${total}</strong> total denial${total === 1 ? "" : "s"}</span>
+      <span>${data.project ? `project: <code>${escape(data.project)}</code>` : "all projects"}</span>
+      <span>category: <code>${escape(data.category || "")}</code></span>
+    </div>
+    <h2>Most recent ${Math.min(recent.length, 100)}</h2>
+  `;
+  if (!recent.length) {
+    const empty = document.createElement("div");
+    empty.className = "empty";
+    empty.textContent = "No denials recorded.";
+    c.appendChild(empty);
+    return c;
+  }
+  const table = document.createElement("table");
+  table.innerHTML = `
+    <thead><tr>
+      <th>When</th><th>Project</th><th>Package</th>
+      <th>Reason</th><th>License / CVEs</th><th>Agent</th>
+    </tr></thead>
+    <tbody></tbody>
+  `;
+  const tbody = table.querySelector("tbody");
+  for (const r of recent) {
+    const tr = document.createElement("tr");
+    const cves = (r.cve_ids || []).slice(0, 3).join(", ");
+    const ext = r.license || cves || "";
+    tr.innerHTML = `
+      <td class="ts">${escape(fmtTs(r.ts))}</td>
+      <td>${escape(r.project)}</td>
+      <td><strong>${escape(r.package)}</strong>${r.version ? " " + escape(r.version) : ""}</td>
+      <td>${escape(r.reason || "")}</td>
+      <td>${escape(ext)}</td>
+      <td>${agentBadge(r.agent_model, r.agent_version)}</td>
+    `;
+    tbody.appendChild(tr);
+  }
+  c.appendChild(table);
+  return c;
+}
+
+function renderAgentsReport(data) {
+  const c = document.createElement("div");
+  const agents = data.agents || [];
+  const recent = data.recent || [];
+  c.innerHTML = `
+    <div class="summary">
+      <span>${data.project ? `project: <code>${escape(data.project)}</code>` : "all projects"}</span>
+      <span><strong>${agents.length}</strong> distinct agent identit${agents.length === 1 ? "y" : "ies"}</span>
+    </div>
+    <h2>By agent</h2>
+  `;
+  if (!agents.length) {
+    const empty = document.createElement("div");
+    empty.className = "empty";
+    empty.textContent = "No evaluations recorded yet.";
+    c.appendChild(empty);
+    return c;
+  }
+  const agg = document.createElement("table");
+  agg.innerHTML = `
+    <thead><tr>
+      <th>Agent</th><th>Evaluations</th><th>Denials</th>
+      <th>Provisional</th><th>Last seen</th>
+    </tr></thead>
+    <tbody></tbody>
+  `;
+  const aggTbody = agg.querySelector("tbody");
+  for (const a of agents) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${agentBadge(a.agent_model, a.agent_version)}</td>
+      <td>${a.evaluations}</td>
+      <td>${a.denials || 0}</td>
+      <td>${a.provisional || 0}</td>
+      <td class="ts">${escape(fmtTs(a.last_seen))}</td>
+    `;
+    aggTbody.appendChild(tr);
+  }
+  c.appendChild(agg);
+
+  c.appendChild(Object.assign(document.createElement("h2"), {
+    textContent: `Most recent ${recent.length}`,
+  }));
+  const recTable = document.createElement("table");
+  recTable.innerHTML = `
+    <thead><tr>
+      <th>When</th><th>Agent</th><th>Project</th>
+      <th>Package</th><th>Verdict</th><th>Reason</th>
+    </tr></thead>
+    <tbody></tbody>
+  `;
+  const recTbody = recTable.querySelector("tbody");
+  for (const r of recent) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td class="ts">${escape(fmtTs(r.ts))}</td>
+      <td>${agentBadge(r.agent_model, r.agent_version)}</td>
+      <td>${escape(r.project)}</td>
+      <td>${escape(r.package)}${r.version ? " " + escape(r.version) : ""}</td>
+      <td class="verdict-${escape(r.verdict)}">${escape(r.verdict)}</td>
+      <td>${escape(r.reason || "")}</td>
+    `;
+    recTbody.appendChild(tr);
+  }
+  c.appendChild(recTable);
+  return c;
+}
+
+async function load() {
+  const params = new URLSearchParams(new FormData(document.getElementById("filter")));
+  const url = ENDPOINT + (params.toString() ? "?" + params : "");
+  const r = await fetch(url);
+  const data = await r.json();
+  const target = document.getElementById("content");
+  target.innerHTML = "";
+  target.appendChild(IS_AGENTS ? renderAgentsReport(data) : renderDenialReport(data));
+
+  const raw = document.createElement("details");
+  raw.innerHTML = `<summary>Raw JSON</summary>`;
+  const pre = document.createElement("pre");
+  pre.className = "raw";
+  pre.textContent = JSON.stringify(data, null, 2);
+  raw.appendChild(pre);
+  target.appendChild(raw);
+}
+document.getElementById("filter").addEventListener("submit", e => { e.preventDefault(); load(); });
 load();
 </script>
 </body>

@@ -13,7 +13,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from ...audit import APPROVAL_PENDING, ApprovalRequest
-from ...auth import get_project, get_requester
+from ...auth import AgentInfo, get_agent_info, get_project, get_requester
 
 
 router = APIRouter()
@@ -31,6 +31,7 @@ async def create_approval_request(
     body: ApprovalRequestBody,
     project: str = Depends(get_project),
     requester: str = Depends(get_requester),
+    agent: AgentInfo = Depends(get_agent_info),
 ) -> JSONResponse:
     state = request.app.state.lex
     req = ApprovalRequest(
@@ -39,13 +40,15 @@ async def create_approval_request(
         package=body.package,
         rationale=body.rationale,
         status=APPROVAL_PENDING,
+        agent_model=agent.model,
+        agent_version=agent.version,
     )
     request_id = await state.audit.upsert_approval_request(req)
-    # PR creation is a Phase-4 deliverable. For now, leave a clear breadcrumb
-    # in the server log so operators can see what would be opened.
     logger.info(
-        "TODO: open PR to add %s for project=%s requester=%s (request_id=%s)",
-        body.package, project, requester, request_id,
+        "approval request stored: package=%s project=%s requester=%s "
+        "agent=%s/%s request_id=%s",
+        body.package, project, requester,
+        agent.model or "?", agent.version or "?", request_id,
     )
     return JSONResponse(
         {
@@ -53,6 +56,8 @@ async def create_approval_request(
             "status": APPROVAL_PENDING,
             "package": body.package,
             "project": project,
+            "agent_model": agent.model,
+            "agent_version": agent.version,
         },
         status_code=status.HTTP_202_ACCEPTED,
     )

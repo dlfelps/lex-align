@@ -42,3 +42,16 @@ async def approval_request_report(
 async def projects_report(request: Request) -> dict:
     rows = await request.app.state.lex.audit.projects_summary()
     return {"projects": rows}
+
+
+@router.get("/reports/agents")
+async def agents_report(
+    request: Request, project: Optional[str] = Query(None)
+) -> dict:
+    """Aggregate audit rows by (agent_model, agent_version).
+
+    Operators use this to answer "which Claude version is doing what" — the
+    headers `X-LexAlign-Agent-Model` and `X-LexAlign-Agent-Version` reported
+    by the client propagate into every audit row.
+    """
+    return await request.app.state.lex.audit.agents_report(project)

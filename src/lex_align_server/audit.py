@@ -50,7 +50,9 @@ CREATE TABLE IF NOT EXISTS audit_log (
     license         TEXT,
     cve_ids         TEXT,
     max_cvss        REAL,
-    registry_status TEXT
+    registry_status TEXT,
+    agent_model     TEXT,
+    agent_version   TEXT
 );
 CREATE INDEX IF NOT EXISTS audit_log_project_ts ON audit_log(project, ts);
 CREATE INDEX IF NOT EXISTS audit_log_package ON audit_log(package);
@@ -64,12 +66,31 @@ CREATE TABLE IF NOT EXISTS approval_requests (
     package         TEXT NOT NULL,
     rationale       TEXT NOT NULL,
     status          TEXT NOT NULL,
-    last_audit_id   TEXT
+    last_audit_id   TEXT,
+    agent_model     TEXT,
+    agent_version   TEXT
 );
 CREATE INDEX IF NOT EXISTS approval_requests_project ON approval_requests(project);
+CREATE INDEX IF NOT EXISTS approval_requests_status ON approval_requests(status);
 CREATE UNIQUE INDEX IF NOT EXISTS approval_requests_dedupe
     ON approval_requests(project, package, requester);
 """
+
+# Indexes that reference Phase-3 columns. Created after `_MIGRATIONS` runs
+# so old databases get the columns first.
+_POST_MIGRATION_INDEXES = """
+CREATE INDEX IF NOT EXISTS audit_log_agent
+    ON audit_log(agent_model, agent_version);
+"""
+
+# Columns added after the initial schema; applied at startup via ALTER TABLE.
+# Each (table, column, ddl) tuple is applied if the column is missing.
+_MIGRATIONS: list[tuple[str, str, str]] = [
+    ("audit_log",         "agent_model",   "TEXT"),
+    ("audit_log",         "agent_version", "TEXT"),
+    ("approval_requests", "agent_model",   "TEXT"),
+    ("approval_requests", "agent_version", "TEXT"),
+]
 
 
 APPROVAL_PENDING = "PENDING_REVIEW"
@@ -91,6 +112,8 @@ class AuditRecord:
     cve_ids: list[str] = field(default_factory=list)
     max_cvss: Optional[float] = None
     registry_status: Optional[str] = None
+    agent_model: Optional[str] = None
+    agent_version: Optional[str] = None
     ts: Optional[datetime.datetime] = None
     id: Optional[str] = None
 
@@ -103,6 +126,8 @@ class ApprovalRequest:
     rationale: str
     status: str = APPROVAL_PENDING
     last_audit_id: Optional[str] = None
+    agent_model: Optional[str] = None
+    agent_version: Optional[str] = None
     ts: Optional[datetime.datetime] = None
     id: Optional[str] = None
 
@@ -115,7 +140,21 @@ class AuditStore:
         self._db_path.parent.mkdir(parents=True, exist_ok=True)
         async with aiosqlite.connect(self._db_path) as db:
             await db.executescript(SCHEMA)
+            await self._migrate(db)
+            # Indexes that depend on the migrated columns can run only
+            # after the ALTER TABLEs above.
+            await db.executescript(_POST_MIGRATION_INDEXES)
             await db.commit()
+
+    @staticmethod
+    async def _migrate(db: aiosqlite.Connection) -> None:
+        """Apply additive `ALTER TABLE` migrations for older databases."""
+        for table, column, ddl in _MIGRATIONS:
+            cur = await db.execute(f"PRAGMA table_info({table})")
+            cols = {row[1] for row in await cur.fetchall()}
+            await cur.close()
+            if column not in cols:
+                await db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")
 
     async def record_evaluation(self, record: AuditRecord) -> str:
         record.id = record.id or str(uuid.uuid4())
@@ -125,8 +164,8 @@ class AuditStore:
                 """INSERT INTO audit_log
                    (id, ts, project, requester, package, version, resolved_version,
                     verdict, denial_category, reason, license, cve_ids, max_cvss,
-                    registry_status)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    registry_status, agent_model, agent_version)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     record.id,
                     record.ts.isoformat(),
@@ -142,6 +181,8 @@ class AuditStore:
                     json.dumps(record.cve_ids) if record.cve_ids else None,
                     record.max_cvss,
                     record.registry_status,
+                    record.agent_model,
+                    record.agent_version,
                 ),
             )
             await db.commit()
@@ -156,20 +197,24 @@ class AuditStore:
                 req.id = row["id"]
                 await db.execute(
                     """UPDATE approval_requests SET ts = ?, rationale = ?, status = ?,
-                       last_audit_id = ? WHERE id = ?""",
+                       last_audit_id = ?, agent_model = ?, agent_version = ?
+                       WHERE id = ?""",
                     (
                         req.ts.isoformat(),
                         req.rationale,
                         req.status,
                         req.last_audit_id,
+                        req.agent_model,
+                        req.agent_version,
                         req.id,
                     ),
                 )
             else:
                 await db.execute(
                     """INSERT INTO approval_requests
-                       (id, ts, project, requester, package, rationale, status, last_audit_id)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                       (id, ts, project, requester, package, rationale, status,
+                        last_audit_id, agent_model, agent_version)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     (
                         req.id,
                         req.ts.isoformat(),
@@ -179,10 +224,39 @@ class AuditStore:
                         req.rationale,
                         req.status,
                         req.last_audit_id,
+                        req.agent_model,
+                        req.agent_version,
                     ),
                 )
             await db.commit()
         return req.id
+
+    async def mark_approved_by_package(self, normalized_name: str) -> int:
+        """Move every PENDING_REVIEW request for `normalized_name` to APPROVED.
+
+        Called when an operator classifies a pending package via the dashboard
+        and adds it to the in-memory registry. Returns the number of rows
+        flipped, which the dashboard can display in its toast.
+        """
+        from .registry import normalize_name as _norm
+        async with aiosqlite.connect(self._db_path) as db:
+            db.row_factory = aiosqlite.Row
+            cur = await db.execute(
+                "SELECT id, package FROM approval_requests WHERE status = ?",
+                (APPROVAL_PENDING,),
+            )
+            rows = [dict(r) for r in await cur.fetchall()]
+            await cur.close()
+            ids = [r["id"] for r in rows if _norm(r["package"]) == normalized_name]
+            if not ids:
+                return 0
+            placeholders = ",".join("?" * len(ids))
+            await db.execute(
+                f"UPDATE approval_requests SET status = ? WHERE id IN ({placeholders})",
+                [APPROVAL_APPROVED, *ids],
+            )
+            await db.commit()
+        return len(ids)
 
     @staticmethod
     async def _existing_request(
@@ -224,7 +298,7 @@ class AuditStore:
 
             recent_cur = await db.execute(
                 f"""SELECT id, ts, project, requester, package, version, reason, license,
-                           cve_ids, max_cvss, registry_status
+                           cve_ids, max_cvss, registry_status, agent_model, agent_version
                     FROM audit_log
                     WHERE {where}
                     ORDER BY ts DESC LIMIT 100""",
@@ -311,6 +385,50 @@ class AuditStore:
                 entry["request_count"] += 1
                 # Rows are ordered DESC by ts so the first one wins for "latest".
         return list(grouped.values())
+
+    async def agents_report(self, project: Optional[str] = None) -> dict[str, Any]:
+        """Aggregate evaluations by (agent_model, agent_version).
+
+        Powers the "agents" dashboard, so operators can see exactly which
+        Claude (or other agent) version is making which kinds of requests.
+        Rows where the agent is unknown collapse into one bucket.
+        """
+        where = ""
+        params: list[Any] = []
+        if project:
+            where = " WHERE project = ?"
+            params.append(project)
+
+        async with aiosqlite.connect(self._db_path) as db:
+            db.row_factory = aiosqlite.Row
+            agg_cur = await db.execute(
+                f"""SELECT agent_model, agent_version,
+                          COUNT(*) AS evaluations,
+                          SUM(CASE WHEN verdict = ? THEN 1 ELSE 0 END) AS denials,
+                          SUM(CASE WHEN verdict = ? THEN 1 ELSE 0 END) AS provisional,
+                          MAX(ts) AS last_seen
+                   FROM audit_log{where}
+                   GROUP BY agent_model, agent_version
+                   ORDER BY evaluations DESC""",
+                [VERDICT_DENIED, VERDICT_PROVISIONALLY_ALLOWED, *params],
+            )
+            agents = [dict(r) for r in await agg_cur.fetchall()]
+            await agg_cur.close()
+
+            recent_cur = await db.execute(
+                f"""SELECT id, ts, project, requester, package, version, verdict,
+                          denial_category, reason, agent_model, agent_version
+                   FROM audit_log{where}
+                   ORDER BY ts DESC LIMIT 50""",
+                params,
+            )
+            recent = [dict(r) for r in await recent_cur.fetchall()]
+            await recent_cur.close()
+        return {
+            "project": project,
+            "agents": agents,
+            "recent": recent,
+        }
 
     async def projects_summary(self) -> list[dict]:
         async with aiosqlite.connect(self._db_path) as db:

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Query, Request
 
-from ...auth import get_project, get_requester
+from ...auth import AgentInfo, get_agent_info, get_project, get_requester
 from ...evaluate import evaluate
 
 
@@ -18,6 +18,7 @@ async def evaluate_endpoint(
     version: str | None = Query(None),
     project: str = Depends(get_project),
     requester: str = Depends(get_requester),
+    agent: AgentInfo = Depends(get_agent_info),
 ) -> dict:
     state = request.app.state.lex
     result = await evaluate(
@@ -25,6 +26,7 @@ async def evaluate_endpoint(
         version=version,
         project=project,
         requester=requester,
+        agent=agent,
         registry=state.registry,
         cache=state.cache,
         audit=state.audit,

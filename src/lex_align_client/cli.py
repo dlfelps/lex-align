@@ -133,12 +133,30 @@ def init(
 @click.option("--package", required=True)
 @click.option("--version", default=None)
 @click.option("--json", "as_json", is_flag=True, default=True, help="Emit JSON (default).")
-def check(package: str, version: str | None, as_json: bool) -> None:
+@click.option(
+    "--agent-model",
+    default=None,
+    help="Override agent model tag (default: $LEXALIGN_AGENT_MODEL).",
+)
+@click.option(
+    "--agent-version",
+    default=None,
+    help="Override agent version tag (default: $LEXALIGN_AGENT_VERSION).",
+)
+def check(
+    package: str,
+    version: str | None,
+    as_json: bool,
+    agent_model: str | None,
+    agent_version: str | None,
+) -> None:
     """Check a package against the server policy."""
     project_root = find_project_root()
     config = _require_config(project_root)
     try:
-        with LexAlignClient(config) as client:
+        with LexAlignClient(
+            config, agent_model=agent_model, agent_version=agent_version
+        ) as client:
             verdict = client.check(package, version)
     except ServerUnreachable as exc:
         raise click.ClickException(f"Server unreachable: {exc}")
@@ -155,12 +173,29 @@ def check(package: str, version: str | None, as_json: bool) -> None:
 @main.command("request-approval")
 @click.option("--package", required=True)
 @click.option("--rationale", required=True)
-def request_approval(package: str, rationale: str) -> None:
+@click.option(
+    "--agent-model",
+    default=None,
+    help="Override agent model tag (default: $LEXALIGN_AGENT_MODEL).",
+)
+@click.option(
+    "--agent-version",
+    default=None,
+    help="Override agent version tag (default: $LEXALIGN_AGENT_VERSION).",
+)
+def request_approval(
+    package: str,
+    rationale: str,
+    agent_model: str | None,
+    agent_version: str | None,
+) -> None:
     """Submit a non-blocking request to add `package` to the registry."""
     project_root = find_project_root()
     config = _require_config(project_root)
     try:
-        with LexAlignClient(config) as client:
+        with LexAlignClient(
+            config, agent_model=agent_model, agent_version=agent_version
+        ) as client:
             response = client.request_approval(package, rationale)
     except ServerUnreachable as exc:
         raise click.ClickException(f"Server unreachable: {exc}")
