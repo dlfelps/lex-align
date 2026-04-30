@@ -12,6 +12,7 @@ from typing import Optional
 import httpx
 
 from .audit import AuditStore
+from .authn import Authenticator
 from .cache import JsonCache
 from .config import Settings
 from .registry import Registry
@@ -24,3 +25,4 @@ class AppState:
     audit: AuditStore
     http: httpx.AsyncClient
     registry: Optional[Registry]
+    authenticator: Authenticator
