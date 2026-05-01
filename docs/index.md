@@ -163,21 +163,25 @@ enforcement for Python projects, single-user by default.
 |---|---|
 | **1.** Server core (registry, license, CVE, audit, evaluate) | :material-check-circle: shipped |
 | **2.** Thin client (init, check, request-approval, pre-commit, Claude hooks) | :material-check-circle: shipped |
-| **3.** Approval workflow UI + reporting endpoints | :material-progress-clock: stubbed |
-| **4.** Dashboards, PR-creation workflow, org-mode auth | :material-pause-circle-outline: deferred |
+| **3.** Approval workflow UI + reporting endpoints + agent identity | :material-check-circle: shipped |
+| **4.** Pluggable org-mode auth | :material-check-circle: shipped |
+| **4.** Pluggable approval proposers + hot-reload | :material-check-circle: shipped |
 
-What that means today: the server returns verdicts and persists
-`request-approval` submissions, but the reviewer UI, the PR-creation
-workflow against the registry repo, and multi-tenant auth are not here
-yet. If you need a polished dashboard for legal to triage from, this
-isn't that tool — *yet*.
+Approvals now flow through a pluggable *proposer*: opens a PR (GitHub
+backend), commits to a local repo (local-git), writes YAML directly
+(local-file), or just logs (log-only / evaluation). The server
+hot-reloads on merge or YAML write — no restarts. See
+[Approvals & Reloads](git-backed-approvals.md) for the full flow.
+
+The dashboard's pending queue gained an "implicit candidates" section
+that surfaces packages your audit log has seen but no one filed an
+approval request for, with a `reason` badge per row so you can tell
+at a glance why something is showing up.
 
 **Scope limits to be explicit about:**
 
 - Python and `pyproject.toml` only. Other package ecosystems are not
   on the roadmap.
-- Single-user mode is the default. Org-mode auth is wired as a flag
-  but not fully implemented.
 - The server only talks to PyPI (license metadata) and OSV (CVE feed).
   The audit log lives on the server's host. Nothing is sent to a third
   party.

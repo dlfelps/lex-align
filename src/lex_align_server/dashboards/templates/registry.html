@@ -126,16 +126,47 @@
   .pending-panel tr:last-child td { border-bottom: none; }
   .pending-panel .rationale { color: #78350f; font-size: 0.9rem; }
   .pending-panel .meta-cell { color: var(--muted); font-size: 0.85rem; white-space: nowrap; }
+
+  /* Implicit candidates panel — different colour so operators can tell at
+     a glance these came from audit_log inference, not explicit requests. */
+  .implicit-panel {
+    margin: 1rem 0; border: 1px solid #c7d2fe; border-radius: 6px;
+    background: #eef2ff;
+  }
+  .implicit-panel.empty { display: none; }
+  .implicit-panel header {
+    padding: 0.5rem 0.8rem; font-weight: 600;
+    border-bottom: 1px solid #c7d2fe; color: #312e81;
+  }
+  .implicit-panel header .count {
+    background: #4338ca; color: #fff; padding: 0 0.5rem;
+    border-radius: 999px; font-size: 0.8rem; margin-left: 0.4rem;
+  }
+  .implicit-panel table { background: transparent; }
+  .implicit-panel th { background: transparent; cursor: default; }
+  .implicit-panel td { border-bottom: 1px solid #c7d2fe; }
+  .implicit-panel tr:last-child td { border-bottom: none; }
+  .implicit-panel .meta-cell { color: var(--muted); font-size: 0.85rem; white-space: nowrap; }
+
+  .reason-badge {
+    display: inline-block; padding: 0.05rem 0.5rem;
+    border-radius: 3px; font-size: 0.75rem; font-weight: 600;
+    margin-bottom: 0.2rem;
+  }
+  .reason-badge.provisional-no-rationale { background: #fef3c7; color: #92400e; }
+  .reason-badge.repeatedly-denied { background: #fee2e2; color: #991b1b; }
+  .reason-badge.pre-screened { background: #e0e7ff; color: #3730a3; }
+  .reason-detail { color: #4b5563; font-size: 0.85rem; display: block; }
 </style>
 </head>
 <body>
 <h1>{{ title }}</h1>
 <p class="subtitle">
-  Edit packages and policies in your browser, then export the result as YAML.
-  Classifying a pending request also updates the <strong>in-memory</strong>
-  registry so live <code>/evaluate</code> calls see the new rule immediately,
-  but to make the change survive a restart you still must
-  <strong>export the YAML and rebuild the server image</strong>.
+  Triage what the audit log has surfaced, then approve via the configured
+  proposer. Each "Add to registry…" click runs through the same path as
+  <code>lex-align-client request-approval</code> — opening a PR, committing
+  to a local repo, or writing the YAML directly, depending on
+  <code>REGISTRY_PROPOSER</code>. The server hot-reloads on merge / write.
 </p>
 
 <div id="meta" class="meta"></div>
@@ -192,6 +223,27 @@
       </tr>
     </thead>
     <tbody id="pending-rows"></tbody>
+  </table>
+</section>
+
+<section id="implicit-panel" class="implicit-panel empty">
+  <header>
+    Implicit candidates<span class="count" id="implicit-count">0</span>
+    <span style="font-weight: normal; font-size: 0.85rem; margin-left: 0.4rem; color: var(--muted);">
+      — packages your audit log has seen but no one filed an approval for
+    </span>
+  </header>
+  <table>
+    <thead>
+      <tr>
+        <th>Package</th>
+        <th>Why it's pending</th>
+        <th>Activity</th>
+        <th>Last seen</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody id="implicit-rows"></tbody>
   </table>
 </section>
 
@@ -274,7 +326,8 @@ let sortField = "name";
 let sortDir = 1;           // 1 asc, -1 desc
 let editingName = null;         // null = create, else editing existing
 let pendingNormalizedName = null; // set when dialog opened from pending panel
-let pendingItems = [];          // pending approval requests from /api/v1/registry/pending
+let pendingItems = [];          // explicit approval requests from /api/v1/registry/pending
+let implicitItems = [];         // implicit candidates (audit-log derived) from same endpoint
 let dismissedKeys = new Set();  // normalized names dismissed in this session
 
 function normalizeName(s) {
@@ -440,6 +493,56 @@ function renderPending() {
   }
 }
 
+function renderImplicit() {
+  const panel = document.getElementById("implicit-panel");
+  const tbody = document.getElementById("implicit-rows");
+  const registered = new Set(Object.keys(registry.packages).map(normalizeName));
+  const explicit = new Set(pendingItems.map(p => p.normalized_name));
+  const visible = implicitItems.filter(p =>
+    !registered.has(p.normalized_name)
+    && !explicit.has(p.normalized_name)
+    && !dismissedKeys.has(p.normalized_name)
+  );
+  document.getElementById("implicit-count").textContent = visible.length;
+  panel.classList.toggle("empty", visible.length === 0);
+  tbody.innerHTML = "";
+  for (const p of visible) {
+    const tr = document.createElement("tr");
+    const reason = p.reason || "pre-screened";
+    const reasonLabel = ({
+      "provisional-no-rationale": "provisional, no rationale",
+      "repeatedly-denied": "repeatedly denied",
+      "pre-screened": "pre-screened",
+    })[reason] || reason;
+    const activity = `${p.evaluations} eval${p.evaluations === 1 ? "" : "s"}`
+      + (p.denials ? ` · ${p.denials} denied` : "")
+      + (p.provisional ? ` · ${p.provisional} provisional` : "");
+    tr.innerHTML = `
+      <td><strong></strong></td>
+      <td>
+        <span class="reason-badge"></span>
+        <span class="reason-detail"></span>
+      </td>
+      <td></td>
+      <td class="meta-cell"></td>
+      <td class="row-actions">
+        <button class="primary" data-add-pending="">Add to registry…</button>
+        <button data-dismiss-pending="">Dismiss</button>
+      </td>
+    `;
+    tr.children[0].querySelector("strong").textContent = p.package;
+    const badge = tr.children[1].querySelector(".reason-badge");
+    badge.textContent = reasonLabel;
+    badge.classList.add(reason);
+    tr.children[1].querySelector(".reason-detail").textContent = p.reason_detail || "";
+    tr.children[2].textContent = activity;
+    tr.children[3].textContent = formatTs(p.latest_ts);
+    tr.querySelector("[data-add-pending]").dataset.addPending = p.package;
+    tr.querySelector("[data-dismiss-pending]").dataset.dismissPending = p.normalized_name;
+    tbody.appendChild(tr);
+  }
+}
+
 function formatTs(iso) {
   if (!iso) return "";
   try {
@@ -454,6 +557,7 @@ function rerender() {
   renderPolicies();
   renderRows();
   renderPending();
+  renderImplicit();
   updateDirtyMarker();
 }
 
@@ -511,33 +615,44 @@ async function saveDialog(ev) {
     return;
   }
 
-  // When this dialog was opened from the pending panel, mutate the
-  // server's in-memory registry so subsequent /evaluate calls see the
-  // classification immediately. For a plain edit we keep the change
-  // browser-only — exporting YAML is still the only persistence path.
-  const fromPending = pendingNormalizedName !== null;
-  if (fromPending) {
-    const r = await fetch("/api/v1/registry/packages", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, ...rule }),
-    });
-    if (!r.ok) {
-      const err = await r.json().catch(() => ({ detail: r.statusText }));
-      const box = document.getElementById("form-error");
-      box.textContent = `Server rejected classification: ${err.detail || r.statusText}`;
-      box.classList.add("visible");
-      return;
-    }
-    const body = await r.json().catch(() => ({}));
-    toast(
-      `Classified ${name}` +
-      (body.approved_requests ? ` (${body.approved_requests} request(s) approved)` : "") +
-      " — export YAML to persist."
-    );
-  } else {
-    toast(editingName === null ? `Added ${name}` : `Updated ${name}`);
+  // Every save now goes through the proposer — opens a PR (github),
+  // commits to a local repo (local-git), writes the YAML directly
+  // (local-file), or just logs (log-only). The dashboard's local copy
+  // also updates immediately so the operator sees the change reflected
+  // even before the eventual reload re-syncs from disk.
+  const rationale =
+    pendingNormalizedName !== null
+      ? `Classified from pending request via dashboard.`
+      : `Operator-driven registry change via dashboard.`;
+  const r = await fetch("/api/v1/registry/proposals", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-LexAlign-Project": "dashboard",
+    },
+    body: JSON.stringify({ name, ...rule, rationale }),
+  });
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({ detail: r.statusText }));
+    const box = document.getElementById("form-error");
+    box.textContent = `Proposer rejected change: ${err.detail || r.statusText}`;
+    box.classList.add("visible");
+    return;
   }
+  const body = await r.json().catch(() => ({}));
+
+  // Compose a backend-aware toast: link to the PR for github, point at
+  // the file for local-file/local-git, etc.
+  const toastMsg = (() => {
+    if (body.url) {
+      const verb = body.status === "amended" ? "Updated PR" :
+                   body.status === "opened"  ? "Opened PR"  :
+                   body.status === "applied" ? "Wrote"      : "Logged";
+      return `${verb}: ${body.url}`;
+    }
+    return `${body.status || "Proposed"} ${name} (${body.backend || "log_only"})`;
+  })();
+  toast(toastMsg);
 
   registry.packages[name] = rule;
   pendingNormalizedName = null;
@@ -648,9 +763,13 @@ async function loadFromServer() {
   original = clone(registry);
   if (pendResp.ok) {
     const body = await pendResp.json();
-    pendingItems = body.items || [];
+    // The endpoint now returns { explicit, implicit } — keep them
+    // separate so the UI can render two panels with different framing.
+    pendingItems = body.explicit || body.items || [];
+    implicitItems = body.implicit || [];
   } else {
     pendingItems = [];
+    implicitItems = [];
   }
   rerender();
 }
@@ -699,7 +818,7 @@ document.getElementById("rows").addEventListener("click", (e) => {
   }
 });
 
-document.getElementById("pending-rows").addEventListener("click", (e) => {
+function handlePendingClick(e) {
   const addPkg = e.target.dataset && e.target.dataset.addPending;
   const dismissKey = e.target.dataset && e.target.dataset.dismissPending;
   if (addPkg) {
@@ -707,13 +826,15 @@ document.getElementById("pending-rows").addEventListener("click", (e) => {
     const normalizedPkg = normalizeName(addPkg);
     openDialog(null);
     pendingNormalizedName = normalizedPkg;
-    document.getElementById("dialog-title").textContent = `Add ${addPkg} to registry`;
+    document.getElementById("dialog-title").textContent = `Propose ${addPkg} for the registry`;
     document.getElementById("f-name").value = normalizedPkg;
   } else if (dismissKey) {
     dismissedKeys.add(dismissKey);
     rerender();
   }
-});
+}
+document.getElementById("pending-rows").addEventListener("click", handlePendingClick);
+document.getElementById("implicit-rows").addEventListener("click", handlePendingClick);
 
 // Re-read policy fields on any change so they participate in dirty tracking.
 document.getElementById("policies-section").addEventListener("input", readPoliciesFromForm);
