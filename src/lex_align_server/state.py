@@ -15,6 +15,7 @@ from .audit import AuditStore
 from .authn import Authenticator
 from .cache import JsonCache
 from .config import Settings
+from .proposer import Proposer
 from .registry import Registry
 
 
@@ -26,3 +27,4 @@ class AppState:
     http: httpx.AsyncClient
     registry: Optional[Registry]
     authenticator: Authenticator
+    proposer: Proposer

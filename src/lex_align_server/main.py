@@ -24,7 +24,9 @@ from .authn import load_authenticator
 from .cache import JsonCache
 from .config import Settings, get_settings
 from .dashboards import router as dashboards_router
+from .proposer import load_proposer
 from .registry import load_registry
+from .reloader import RegistryPoller
 from .state import AppState
 
 
@@ -53,6 +55,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "auth: enabled=%s backend=%s",
             settings.auth_enabled, type(authenticator).__name__,
         )
+        proposer = load_proposer(settings, http_client)
+        logger.info("proposer: backend=%s", type(proposer).__name__)
         app.state.lex = AppState(
             settings=settings,
             cache=cache,
@@ -60,10 +64,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             http=http_client,
             registry=registry,
             authenticator=authenticator,
+            proposer=proposer,
         )
+        poller = RegistryPoller(app.state.lex)
+        poller.start()
         try:
             yield
         finally:
+            await poller.stop()
+            await proposer.close()
             await http_client.aclose()
             await cache.close()
 
