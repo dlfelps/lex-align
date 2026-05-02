@@ -179,3 +179,40 @@ async def test_no_registry_configured_falls_through(audit):
             settings=_settings(), http_client=http,
         )
     assert result.verdict == VERDICT_PROVISIONALLY_ALLOWED
+
+
+@pytest.mark.asyncio
+async def test_unknown_license_pending_approval_sets_auto_request_flag(audit):
+    """With the default unknown_license_policy=pending_approval, an unknown
+    license should yield PROVISIONALLY_ALLOWED and auto_request_approval=True."""
+    reg = _registry()  # default unknown_license_policy is pending_approval
+    transport = _build_mock(pypi_payload={
+        "info": {"license": "Some Obscure License v99", "version": "1.0.0"}
+    })
+    async with httpx.AsyncClient(transport=transport) as http:
+        result = await evaluate(
+            package="obscurepkg", version=None, project="proj", requester="anon",
+            registry=reg, cache=MemCache(), audit=audit,
+            settings=_settings(), http_client=http,
+        )
+    assert result.verdict == VERDICT_PROVISIONALLY_ALLOWED
+    assert result.auto_request_approval is True
+    assert result.is_requestable is True
+    assert result.license == "UNKNOWN"
+
+
+@pytest.mark.asyncio
+async def test_unknown_license_block_policy_still_denies(audit):
+    """When unknown_license_policy=block, unknown licenses must still be denied."""
+    reg = _registry(unknown_license_policy="block")
+    transport = _build_mock(pypi_payload={
+        "info": {"license": "Some Obscure License v99", "version": "1.0.0"}
+    })
+    async with httpx.AsyncClient(transport=transport) as http:
+        result = await evaluate(
+            package="obscurepkg", version=None, project="proj", requester="anon",
+            registry=reg, cache=MemCache(), audit=audit,
+            settings=_settings(), http_client=http,
+        )
+    assert result.verdict == VERDICT_DENIED
+    assert result.auto_request_approval is False
