@@ -52,7 +52,7 @@ mode is the default.
 
 ```bash
 # Server (host you control)
-pip install "lex-align[server]"
+pip install lex-align
 lex-align-server init && cd lexalign
 lex-align-server registry compile registry.yml registry.json
 docker compose up -d
@@ -88,7 +88,7 @@ a governed repo are backstopped by the pre-commit hook. Full matrix:
 | **2.** Thin client (init, check, request-approval, pre-commit, Claude hooks) | ✅ shipped |
 | **3.** Approval workflow UI + reporting endpoints + agent identity | ✅ shipped |
 | **4.** Pluggable org-mode auth | ✅ shipped |
-| **4.** Pluggable approval proposers (local-file, local-git, GitHub PR) + hot-reload | ✅ shipped |
+| **5.** Pluggable approval proposers (local-file, local-git, GitHub PR) + hot-reload | ✅ shipped |
 
 Every registry change now flows through a *proposer*: opens a PR
 (GitHub), commits to a local repo (local-git), writes the YAML
@@ -113,7 +113,7 @@ server hot-reloads → next check sees the new rule -->
 ## Contributing
 
 ```bash
-uv sync --all-extras --all-groups
+uv sync --all-groups
 uv run pytest
 ```
 

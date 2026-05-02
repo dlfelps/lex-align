@@ -23,6 +23,7 @@ moving while `request-approval` enqueues formal review asynchronously
 
 - [Home](index.md): Overview, architecture, quick links.
 - [Getting Started](getting-started.md): Bring up the server, install the client, init a project.
+- [Org Mode Authentication](org-mode-auth.md): Pluggable auth backends (`header`, `webhook`, custom Python) for multi-user deployments.
 - [Agent Support](agent-support.md): Which features work for which agents (Claude Code, Cursor, Aider). Claude Code is first-class; the pre-commit guardrail is universal.
 - [API Reference](api.md): Auto-generated docstrings for `lex_align_client` and `lex_align_server`, sourced via mkdocstrings from `src/`.
 

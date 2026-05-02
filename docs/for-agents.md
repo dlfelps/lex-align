@@ -76,6 +76,19 @@ and a footgun at worst.
 
 ---
 
+## Agent identity
+
+`check` and `request-approval` accept `--agent-model` and
+`--agent-version` flags that tag audit rows in the server dashboard,
+so humans reviewing the log can see *which* agent submitted what.
+Both flags fall back to the `LEXALIGN_AGENT_MODEL` and
+`LEXALIGN_AGENT_VERSION` environment variables. Inside Claude Code,
+the `SessionStart` hook auto-detects the model and exports both
+variables for the rest of the session — you usually do not need to
+set them yourself.
+
+---
+
 ## Verdict JSON shape
 
 The full schema returned by both `check` and `GET /api/v1/evaluate`:

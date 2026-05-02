@@ -1,9 +1,10 @@
 ## lex-align (v2.2)
 
-This repo is governed by lex-align — every dependency change is checked
-against the centrally-managed registry, the OSV CVE feed, and a license
-policy. The server is the source of truth; the client is a thin CLI and a
-set of hooks.
+This repo is governed by lex-align — every change to `[project].dependencies`
+is checked against the centrally-managed registry, the OSV CVE feed, and a
+license policy. Dev-only deps under `[dependency-groups]` and
+`[project.optional-dependencies]` are out of scope. The server is the source
+of truth; the client is a thin CLI and a set of hooks.
 
 ### Before adding or bumping a runtime dependency
 
@@ -23,16 +24,30 @@ The verdict will be one of:
   it was the registry, a critical CVE, or the license. If a `replacement`
   is provided, prefer it.
 
-### Hard guarantees
+### Automatic enforcement
 
-* The git **pre-commit hook** re-checks every runtime dep on every commit,
+`lex-align-client init` wires three Claude Code hooks plus a git hook:
+
+* **`SessionStart`** prints a session brief (server URL, mode, agent
+  identity, dep count) at every Claude Code session start.
+* **`PreToolUse`** on `Edit|Write|MultiEdit` intercepts every edit to
+  `pyproject.toml` and re-runs the check before bytes hit disk; a `DENIED`
+  verdict blocks the write.
+* **`SessionEnd`** is reserved for future use.
+* The **git pre-commit hook** re-checks every runtime dep on every commit,
   so a freshly-published critical CVE on an already-installed package will
   block the commit and force you to replan.
-* The Claude Code **PreToolUse** hook intercepts every edit to
-  `pyproject.toml` and applies the same logic before the bytes hit disk.
 
 If a check returns DENIED, do not bypass the hook. Replace the package or
-choose a different version.
+choose a different version. Never use `git commit --no-verify`.
+
+### Agent identity
+
+`check` and `request-approval` accept `--agent-model` and `--agent-version`,
+which tag audit rows in the server's dashboard. They default to the
+`LEXALIGN_AGENT_MODEL` and `LEXALIGN_AGENT_VERSION` environment variables.
+The `SessionStart` hook auto-detects the Claude model and exports both
+vars for the rest of the session.
 
 ### IMPORTANT for AI agents
 
@@ -41,3 +56,6 @@ choose a different version.
   and (for `request-approval`) `--rationale`.
 * `lex-align-client init` is a one-shot setup command. If `.lexalign.toml`
   is already present, do not re-run it; the project is already configured.
+* `lex-align-client uninstall` removes the Claude hooks and the git
+  pre-commit shim but preserves `.lexalign.toml`. Do not invoke it unless
+  explicitly asked to disable governance.

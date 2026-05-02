@@ -7,7 +7,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 RUN pip install --upgrade pip \
- && pip install "lex-align[server]=={LEX_ALIGN_VERSION}"
+ && pip install "lex-align=={LEX_ALIGN_VERSION}"
 
 RUN mkdir -p /var/lib/lexalign /etc/lexalign
 

@@ -26,9 +26,9 @@ addition and your repo, before the bytes are written.
 ## How it works
 
 A central FastAPI server is the source of truth. The client is thin: a
-CLI plus two hooks. Every check runs three gates — your internal
-registry, OSV CVE scores, and PyPI license metadata — and returns one
-of three verdicts.
+CLI plus a handful of hooks. Every check runs three gates — your
+internal registry, OSV CVE scores, and PyPI license metadata — and
+returns one of three verdicts.
 
 ```mermaid
 flowchart LR

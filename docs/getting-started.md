@@ -2,17 +2,18 @@
 
 This guide walks through bringing up a single-user `lex-align`
 deployment and wiring a project into it. Both halves install from
-PyPI — there is nothing to clone.
+PyPI as a single `lex-align` distribution — there is nothing to clone
+and no extras to remember.
 
 ## 1. Bring up the server
 
 `lex-align-server init` materializes the docker-compose stack,
 Dockerfile, registry example, and env template into a directory you
-choose. The bundled `Dockerfile` pulls `lex-align[server]` from PyPI,
-so a single `docker compose up -d` is enough.
+choose. The bundled `Dockerfile` pulls `lex-align` from PyPI, so a
+single `docker compose up -d` is enough.
 
 ```bash
-pip install "lex-align[server]"
+pip install lex-align
 lex-align-server init                              # writes ./lexalign/
 cd lexalign
 $EDITOR registry.yml                               # tune package policies (optional)
@@ -35,7 +36,7 @@ organization mode.
 
 | File | Purpose |
 |---|---|
-| `Dockerfile` | Pulls `lex-align[server]` from PyPI, pinned to the version that ran `init`. |
+| `Dockerfile` | Pulls `lex-align` from PyPI, pinned to the version that ran `init`. |
 | `docker-compose.yml` | Server + Redis stack. Single-user mode by default. |
 | `.env.example` | Copy to `.env`. Holds `AUTH_ENABLED`, `CVE_THRESHOLD`, etc. |
 | `registry.yml` | Human-authored enterprise registry (starter content). Edit this. |
@@ -53,10 +54,16 @@ docker compose restart lexalign-server
 
 ## 2. Install the client
 
+The client is a CLI, so installing it into an isolated environment with
+`uv tool install` (or `pipx`) keeps it off your project's dependency
+graph:
+
 ```bash
-pip install "lex-align"
-# or, with uv:
-uv add --dev "lex-align"
+uv tool install lex-align
+# or:
+pipx install lex-align
+# or, plain pip:
+pip install lex-align
 ```
 
 ## 3. Initialize a project
@@ -66,9 +73,25 @@ cd /path/to/your/project
 lex-align-client init
 ```
 
-`init` writes `.lexalign.toml`, installs the Claude Code session hooks
-under `.claude/settings.json`, and adds a git pre-commit shim under
-`.git/hooks/pre-commit`.
+`init` does four things in one shot:
+
+- writes `.lexalign.toml` with the server URL and mode
+- installs the Claude Code session hooks (`SessionStart`, `PreToolUse`
+  on `Edit|Write|MultiEdit`, `SessionEnd`) into `.claude/settings.json`
+- installs a git pre-commit shim at `.git/hooks/pre-commit`
+- creates or extends `CLAUDE.md` with the agent contract
+
+Flags worth knowing:
+
+| Flag | Effect |
+|---|---|
+| `--yes` / `-y` | Accept defaults non-interactively (CI-friendly). |
+| `--server-url URL` | Override the server URL (default `http://127.0.0.1:8765`). |
+| `--project NAME` | Override the auto-detected project name. |
+| `--mode {single-user,org}` | Pick the auth mode. Defaults to `single-user`. |
+| `--no-claude-hooks` | Skip the Claude Code hook install. |
+| `--no-precommit` | Skip the git pre-commit shim. |
+| `--no-claude-md` | Skip the `CLAUDE.md` write. |
 
 !!! warning "One-shot command"
     `lex-align-client init` is meant to be run **once** per project.
@@ -83,6 +106,33 @@ under `.claude/settings.json`, and adds a git pre-commit shim under
 | Async approval | `lex-align-client request-approval --package httpx --rationale "standard async client"` |
 | Pre-commit guardrail | runs automatically on every `git commit` |
 | Claude Code hook | intercepts every edit to `pyproject.toml` |
+| Tear down hooks | `lex-align-client uninstall` (preserves `.lexalign.toml`) |
+
+Both hooks enforce against `[project].dependencies` only. Changes to
+`[dependency-groups]` and `[project.optional-dependencies]` are not
+checked — by design, since dev tooling does not ship to production.
+
+### Agent identity
+
+`check` and `request-approval` accept `--agent-model` and
+`--agent-version` flags that tag audit rows in the server dashboard.
+Both flags read the `LEXALIGN_AGENT_MODEL` and `LEXALIGN_AGENT_VERSION`
+environment variables when not set explicitly, so exporting them once
+in your shell or CI environment is usually enough. Inside Claude Code,
+the `SessionStart` hook auto-detects the model and exports both
+variables for the rest of the session.
+
+### Org mode
+
+If you ran `init --mode org`, export the API key before any `check`
+or `request-approval` call. The variable name is whichever
+`api_key_env_var` is set to in `.lexalign.toml` (default
+`LEXALIGN_API_KEY`):
+
+```bash
+export LEXALIGN_API_KEY=...
+lex-align-client check --package httpx
+```
 
 ## 5. Reading verdicts
 

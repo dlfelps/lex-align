@@ -17,10 +17,11 @@ hit disk, with a closed-enum verdict that AI agents can branch on.
 | Cost                          | Free       | Freemium | Paid    | Free        |
 | Self-hosted                   | ✅         | Partial  | Partial | ✅          |
 
-The bottom three rows are where `lex-align` differs in kind, not just
-degree: an approved-registry gate, an edit-time `PreToolUse` intercept,
-and an auto-written `CLAUDE.md` so agents pre-flight every dep without
-being asked.
+The middle rows — approved-registry enforcement, pre-commit
+interception, and AI-agent integration — are where `lex-align`
+differs in kind, not just degree: an approved-registry gate, an
+edit-time `PreToolUse` intercept, and an auto-written `CLAUDE.md` so
+agents pre-flight every dep without being asked.
 
 ---
 
@@ -35,7 +36,7 @@ enforcement for Python projects, single-user by default.
 | **2.** Thin client (init, check, request-approval, pre-commit, Claude hooks) | :material-check-circle: shipped |
 | **3.** Approval workflow UI + reporting endpoints + agent identity | :material-check-circle: shipped |
 | **4.** Pluggable org-mode auth | :material-check-circle: shipped |
-| **4.** Pluggable approval proposers + hot-reload | :material-check-circle: shipped |
+| **5.** Pluggable approval proposers + hot-reload | :material-check-circle: shipped |
 
 Approvals now flow through a pluggable *proposer*: opens a PR (GitHub
 backend), commits to a local repo (local-git), writes YAML directly
