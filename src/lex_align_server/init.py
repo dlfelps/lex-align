@@ -77,13 +77,7 @@ def _write(
 def _compile_registry(yaml_path: Path, json_path: Path) -> None:
     import json
 
-    try:
-        import yaml
-    except ImportError:
-        raise ImportError(
-            "pyyaml is required to compile the registry. "
-            "Install the server extras: pip install 'lex-align[server]'"
-        ) from None
+    import yaml
 
     doc = yaml.safe_load(yaml_path.read_text())
     compiled = validate_registry(doc)

@@ -68,8 +68,6 @@ def init(target: Path, force: bool) -> None:
         result = init_target(target, force=force)
     except FileExistsError as exc:
         raise click.ClickException(str(exc))
-    except ImportError as exc:
-        raise click.ClickException(str(exc))
     except ValidationError as exc:
         raise click.ClickException(f"Registry validation failed: {exc}")
 
