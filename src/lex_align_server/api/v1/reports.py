@@ -25,7 +25,8 @@ async def legal_report(
 async def security_report(
     request: Request, project: Optional[str] = Query(None)
 ) -> dict:
-    return await request.app.state.lex.audit.security_report(project)
+    state = request.app.state.lex
+    return await state.audit.security_report(project, registry=state.registry)
 
 
 @router.get("/reports/approval-requests")

@@ -1,12 +1,18 @@
 """Dashboard pages.
 
 Four pages render server-side and fetch their data from the JSON API:
-- /dashboard/security, /dashboard/legal and /dashboard/agents show
-  read-only reports.
-- /dashboard/registry is an interactive workshop: it loads the live
+
+- ``/dashboard/security`` is a vulnerability-posture view: severity buckets,
+  packages with the worst CVE history, and the "hot" cell — registry-allowed
+  packages that have started attracting CVE denials.
+- ``/dashboard/legal`` is a license-compliance view: license breakdown by
+  verdict, unknown-license policy performance, projects pulling the most
+  non-compliant packages.
+- ``/dashboard/agents`` shows a generic agent-activity report.
+- ``/dashboard/registry`` is an interactive workshop: it loads the live
   registry, lets the operator triage pending approval requests, and
   exports the result as YAML. Classifying a pending request also
-  updates the in-memory registry so live `/evaluate` calls see the
+  updates the in-memory registry so live ``/evaluate`` calls see the
   rule immediately, but persistence still requires exporting the YAML
   and rebuilding the server image.
 """
@@ -28,16 +34,16 @@ templates = Jinja2Templates(directory=str(_TEMPLATE_DIR))
 @router.get("/dashboard/security", response_class=HTMLResponse)
 async def security_dashboard(request: Request) -> HTMLResponse:
     return templates.TemplateResponse(
-        request, "report.html",
-        {"title": "Security report", "endpoint": "/api/v1/reports/security"},
+        request, "security.html",
+        {"title": "Security posture", "endpoint": "/api/v1/reports/security"},
     )
 
 
 @router.get("/dashboard/legal", response_class=HTMLResponse)
 async def legal_dashboard(request: Request) -> HTMLResponse:
     return templates.TemplateResponse(
-        request, "report.html",
-        {"title": "Legal report", "endpoint": "/api/v1/reports/legal"},
+        request, "legal.html",
+        {"title": "Legal compliance", "endpoint": "/api/v1/reports/legal"},
     )
 
 

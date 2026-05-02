@@ -236,6 +236,129 @@ async def test_mark_approved_by_package_flips_pending_for_normalized_name(store)
 
 
 @pytest.mark.asyncio
+async def test_legal_report_breakdown_groups_licenses_and_unknown(store):
+    """legal_report rolls up every audit row by license, splits by verdict,
+    and surfaces UNKNOWN as its own bucket so the dashboard can show how
+    the unknown_license_policy is performing."""
+    from lex_align_server.audit import VERDICT_PROVISIONALLY_ALLOWED
+
+    common = dict(project="p1", requester="anon", version=None, resolved_version=None)
+    await store.record_evaluation(AuditRecord(
+        package="a", verdict=VERDICT_ALLOWED, denial_category=DENIAL_NONE,
+        reason="ok", license="MIT", **common,
+    ))
+    await store.record_evaluation(AuditRecord(
+        package="b", verdict=VERDICT_ALLOWED, denial_category=DENIAL_NONE,
+        reason="ok", license="MIT", **common,
+    ))
+    await store.record_evaluation(AuditRecord(
+        package="c", verdict=VERDICT_DENIED, denial_category=DENIAL_LICENSE,
+        reason="GPL", license="GPL-3.0", **common,
+    ))
+    await store.record_evaluation(AuditRecord(
+        package="d", verdict=VERDICT_PROVISIONALLY_ALLOWED,
+        denial_category=DENIAL_NONE, reason="unknown",
+        license="UNKNOWN", **common,
+    ))
+
+    legal = await store.legal_report()
+    by_license = {r["license"]: r for r in legal["license_breakdown"]}
+    assert by_license["MIT"]["allowed"] == 2
+    assert by_license["GPL-3.0"]["denied"] == 1
+    assert by_license["UNKNOWN"]["provisional"] == 1
+    assert legal["unknown_license"] == {
+        "total": 1, "allowed": 0, "provisional": 1, "denied": 0,
+    }
+    assert legal["top_projects"][0] == {"project": "p1", "denials": 1}
+
+
+@pytest.mark.asyncio
+async def test_security_report_severity_buckets_and_top_packages(store):
+    """security_report buckets CVE-denied rows by CVSS and ranks packages /
+    CVE ids by max CVSS first, denial count second."""
+    common = dict(
+        project="p1", requester="anon", version=None, resolved_version=None,
+        verdict=VERDICT_DENIED, denial_category=DENIAL_CVE, reason="cve",
+    )
+    await store.record_evaluation(AuditRecord(
+        package="critpkg", cve_ids=["CVE-1"], max_cvss=9.5, **common,
+    ))
+    await store.record_evaluation(AuditRecord(
+        package="critpkg", cve_ids=["CVE-1"], max_cvss=9.5, **common,
+    ))
+    await store.record_evaluation(AuditRecord(
+        package="highpkg", cve_ids=["CVE-2"], max_cvss=7.4, **common,
+    ))
+    await store.record_evaluation(AuditRecord(
+        package="medpkg", cve_ids=["CVE-3"], max_cvss=4.5, **common,
+    ))
+
+    sec = await store.security_report()
+    assert sec["severity_distribution"]["critical"] == 2
+    assert sec["severity_distribution"]["high"] == 1
+    assert sec["severity_distribution"]["medium"] == 1
+    # Top packages: critpkg first (max CVSS 9.5), then highpkg, then medpkg.
+    assert [r["package"] for r in sec["top_packages"][:3]] == [
+        "critpkg", "highpkg", "medpkg",
+    ]
+    assert sec["top_packages"][0]["denials"] == 2
+    # Top CVEs ranks the same way.
+    assert sec["top_cves"][0]["cve_id"] == "CVE-1"
+    assert sec["top_cves"][0]["occurrences"] == 2
+    # Without a registry passed in, the hot list is empty.
+    assert sec["hot_registry_packages"] == []
+
+
+@pytest.mark.asyncio
+async def test_security_report_hot_registry_packages_flags_approved_with_cves(store):
+    """A package the registry currently approves whose recent audit rows
+    show CVE denials must surface in `hot_registry_packages` so an
+    operator can pin or replace before it lands in a commit."""
+    from lex_align_server.registry import (
+        GlobalPolicies,
+        PackageRule,
+        PackageStatus,
+        Registry,
+    )
+
+    registry = Registry(
+        version="1",
+        global_policies=GlobalPolicies(),
+        packages={
+            "redis": PackageRule(status=PackageStatus.APPROVED),
+            "banned_pkg": PackageRule(status=PackageStatus.BANNED),
+        },
+    )
+
+    common = dict(
+        project="p1", requester="anon", version=None, resolved_version=None,
+        verdict=VERDICT_DENIED, denial_category=DENIAL_CVE, reason="cve",
+    )
+    # Approved package newly hit by a critical → should surface.
+    await store.record_evaluation(AuditRecord(
+        package="redis", cve_ids=["CVE-9"], max_cvss=9.8, **common,
+    ))
+    # Banned package — also has CVEs, but registry already says no, so it
+    # must not surface here (the dashboard would drown in noise otherwise).
+    await store.record_evaluation(AuditRecord(
+        package="banned_pkg", cve_ids=["CVE-1"], max_cvss=8.0, **common,
+    ))
+    # Unknown-to-registry package — also out of scope for "hot" panel.
+    await store.record_evaluation(AuditRecord(
+        package="unknown_pkg", cve_ids=["CVE-2"], max_cvss=8.0, **common,
+    ))
+
+    sec = await store.security_report(registry=registry)
+    hot = {r["package"]: r for r in sec["hot_registry_packages"]}
+    assert "redis" in hot
+    assert hot["redis"]["registry_status"] == "approved"
+    assert hot["redis"]["cve_ids"] == ["CVE-9"]
+    assert hot["redis"]["denials"] == 1
+    assert "banned_pkg" not in hot
+    assert "unknown_pkg" not in hot
+
+
+@pytest.mark.asyncio
 async def test_audit_migration_adds_agent_columns_to_old_db(tmp_path):
     """A pre-Phase-3 SQLite file (without agent_* columns) must upgrade
     cleanly when the new server boots against it."""
