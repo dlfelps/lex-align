@@ -53,9 +53,13 @@ that round-trip never happens.
 - Writes the `lex-align` section into `CLAUDE.md` so every Claude Code
   session knows to call `check` and `request-approval` with the right
   flags.
-- Installs `PreToolUse` hooks in `.claude/settings.json` that intercept
-  every edit to `pyproject.toml` and either allow, advise, or hard-block
-  based on the server's verdict — *before* the file is written.
+- Wires three Claude Code hooks into `.claude/settings.json`:
+  `SessionStart` prints a session brief (server URL, agent identity,
+  dep count) at the start of every session; `PreToolUse` on
+  `Edit|Write|MultiEdit` intercepts every `pyproject.toml` edit and
+  either allows, advises, or hard-blocks based on the server's verdict
+  — *before* the file is written; `SessionEnd` is reserved for future
+  use.
 - Installs the standard git pre-commit hook.
 
 This is the configuration the project is tested against. The

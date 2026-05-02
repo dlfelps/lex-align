@@ -29,9 +29,9 @@ addition and your repo, before the bytes are written.
 ## How it works
 
 A central FastAPI server is the source of truth. The client is thin: a
-CLI plus two hooks. Every check runs three gates — your internal
-registry, OSV CVE scores, and PyPI license metadata — and returns one
-of three verdicts.
+CLI plus a handful of hooks. Every check runs three gates — your
+internal registry, OSV CVE scores, and PyPI license metadata — and
+returns one of three verdicts.
 
 ```mermaid
 flowchart LR
@@ -118,10 +118,11 @@ hit disk, with a closed-enum verdict that AI agents can branch on.
 | Cost                          | Free       | Freemium | Paid    | Free        |
 | Self-hosted                   | ✅         | Partial  | Partial | ✅          |
 
-The bottom three rows are where `lex-align` differs in kind, not just
-degree: an approved-registry gate, an edit-time `PreToolUse` intercept,
-and an auto-written `CLAUDE.md` so agents pre-flight every dep without
-being asked.
+The middle rows — approved-registry enforcement, pre-commit
+interception, and AI-agent integration — are where `lex-align`
+differs in kind, not just degree: an approved-registry gate, an
+edit-time `PreToolUse` intercept, and an auto-written `CLAUDE.md` so
+agents pre-flight every dep without being asked.
 
 ---
 
@@ -143,10 +144,11 @@ lex-align-client init
 lex-align-client check --package httpx
 ```
 
-`init` writes `.lexalign.toml`, installs `.git/hooks/pre-commit`, and —
-if Claude Code is detected — wires the `PreToolUse` hook into
-`.claude/settings.json` and drops a `CLAUDE.md` so every session knows
-how to use `check` and `request-approval`.
+`init` writes `.lexalign.toml`, installs `.git/hooks/pre-commit`,
+wires the Claude Code session hooks into `.claude/settings.json`, and
+drops a `CLAUDE.md` so every Claude Code session knows how to use
+`check` and `request-approval`. Pass `--no-claude-hooks` or
+`--no-claude-md` to opt any of those out.
 
 [Full Getting Started →](getting-started.md) ·
 [For Agents →](for-agents.md) ·
