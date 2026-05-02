@@ -86,12 +86,27 @@ a governed repo are backstopped by the pre-commit hook. Full matrix:
 |---|---|
 | **1.** Server core (registry, license, CVE, audit, evaluate) | ✅ shipped |
 | **2.** Thin client (init, check, request-approval, pre-commit, Claude hooks) | ✅ shipped |
-| **3.** Approval workflow UI + reporting endpoints | 🟡 stubbed |
-| **4.** Dashboards, PR-creation workflow, org-mode auth | ⏸ deferred |
+| **3.** Approval workflow UI + reporting endpoints + agent identity | ✅ shipped |
+| **4.** Pluggable org-mode auth | ✅ shipped |
+| **5.** Pluggable approval proposers (local-file, local-git, GitHub PR) + hot-reload | ✅ shipped |
 
-`request-approval` persists each submission today, but the reviewer UI and
-the PR-creation workflow against the registry repo are not here yet. If you
-need a polished triage dashboard, this isn't that tool — yet.
+Every registry change now flows through a *proposer*: opens a PR
+(GitHub), commits to a local repo (local-git), writes the YAML
+directly (local-file), or just logs (log-only / evaluation). The
+server hot-reloads on merge or YAML write — no restarts. See
+[Approvals & Reloads](https://dlfelps.github.io/lex-align/git-backed-approvals/)
+for the full flow, GitHub permission requirements, and the
+"why-is-this-pending" panel on the dashboard.
+
+The dashboard's classify endpoint that mutated the in-memory registry
+in Phase 3 is gone — every change now has a single source of truth in
+`registry.yml`, with a reload trigger pulling the new state into
+memory.
+
+<!-- TODO: image — animated GIF or screenshot of the approval flow:
+agent runs check → request-approval → PR opens → reviewer merges →
+server hot-reloads → next check sees the new rule -->
+*[image placeholder: approval-flow screenshot or GIF]*
 
 ---
 

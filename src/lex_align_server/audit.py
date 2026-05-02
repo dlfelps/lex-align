@@ -98,6 +98,32 @@ APPROVAL_APPROVED = "APPROVED"
 APPROVAL_REJECTED = "REJECTED"
 
 
+def _classify_implicit(entry: dict) -> tuple[str, str]:
+    """Map a grouped implicit-candidate row to (reason, human-detail).
+
+    Order matters — a package can be both denied repeatedly and have
+    received a provisional, in which case "provisional-no-rationale"
+    wins because that's the higher-signal triage cue.
+    """
+    if entry["provisional"] > 0:
+        return (
+            "provisional-no-rationale",
+            f"{entry['provisional']} provisional verdict(s); "
+            "no `request-approval` follow-up.",
+        )
+    if entry["denials"] >= 3:
+        return (
+            "repeatedly-denied",
+            f"{entry['denials']} denials across {entry['project_count']} project(s); "
+            "an explicit registry rule would short-circuit future checks.",
+        )
+    return (
+        "pre-screened",
+        f"{entry['evaluations']} `check` call(s) across "
+        f"{entry['project_count']} project(s); never proposed.",
+    )
+
+
 @dataclass
 class AuditRecord:
     project: str
@@ -385,6 +411,99 @@ class AuditStore:
                 entry["request_count"] += 1
                 # Rows are ordered DESC by ts so the first one wins for "latest".
         return list(grouped.values())
+
+    async def list_implicit_candidates(
+        self, *, window_days: int = 30
+    ) -> list[dict]:
+        """Packages that show up in `audit_log` but never produced an
+        explicit `request-approval` row.
+
+        This catches the cases where an agent / hook only ever called
+        `check`: the verdict's recorded but no one is going to file an
+        approval — yet the operator still wants to triage.
+
+        Each row is annotated with a ``reason`` field explaining why
+        it's surfacing:
+
+          ``provisional-no-rationale`` — the package got
+              ``PROVISIONALLY_ALLOWED`` and the agent didn't follow up
+              with ``request-approval``. Highest signal.
+          ``repeatedly-denied`` — the package was DENIED repeatedly, so
+              an explicit registry rule (banned, version-pinned, replaced)
+              would save downstream agents from rediscovering the wall.
+          ``pre-screened`` — only `check` calls, all ALLOWED. Lowest
+              signal, but useful for "things lots of agents poke at."
+
+        Callers (the dashboard) further filter against the live registry
+        so packages that just got merged stop appearing immediately.
+        """
+        from .registry import normalize_name
+
+        # Pull all audit rows in the window, plus all approval_requests rows
+        # ever (so we can subtract the explicit ones).
+        async with aiosqlite.connect(self._db_path) as db:
+            db.row_factory = aiosqlite.Row
+            cur = await db.execute(
+                f"""SELECT package, verdict, denial_category, ts, project,
+                          agent_model, agent_version
+                   FROM audit_log
+                   WHERE ts >= datetime('now', '-{int(window_days)} days')
+                   ORDER BY ts DESC""",
+            )
+            audit_rows = [dict(r) for r in await cur.fetchall()]
+            await cur.close()
+
+            cur2 = await db.execute(
+                "SELECT DISTINCT package FROM approval_requests",
+            )
+            explicit = {
+                normalize_name(dict(r)["package"])
+                for r in await cur2.fetchall()
+            }
+            await cur2.close()
+
+        grouped: dict[str, dict] = {}
+        for r in audit_rows:
+            key = normalize_name(r["package"])
+            if key in explicit:
+                # Explicit `request-approval` exists → already in pending panel.
+                continue
+            entry = grouped.setdefault(key, {
+                "package": r["package"],
+                "normalized_name": key,
+                "evaluations": 0,
+                "denials": 0,
+                "provisional": 0,
+                "latest_ts": r["ts"],
+                "latest_project": r["project"],
+                "latest_agent_model": r.get("agent_model"),
+                "latest_agent_version": r.get("agent_version"),
+                "projects": set(),
+            })
+            entry["evaluations"] += 1
+            if r["verdict"] == VERDICT_DENIED:
+                entry["denials"] += 1
+            elif r["verdict"] == VERDICT_PROVISIONALLY_ALLOWED:
+                entry["provisional"] += 1
+            entry["projects"].add(r["project"])
+
+        out: list[dict] = []
+        for key, entry in grouped.items():
+            entry["project_count"] = len(entry.pop("projects"))
+            entry["reason"], entry["reason_detail"] = _classify_implicit(entry)
+            out.append(entry)
+
+        # Rank by signal strength. provisional > denied > pre-screened, then
+        # by frequency × recency proxy (just frequency for now).
+        rank_order = {
+            "provisional-no-rationale": 0,
+            "repeatedly-denied": 1,
+            "pre-screened": 2,
+        }
+        out.sort(key=lambda r: (
+            rank_order.get(r["reason"], 99), -r["evaluations"],
+        ))
+        return out
 
     async def agents_report(self, project: Optional[str] = None) -> dict[str, Any]:
         """Aggregate evaluations by (agent_model, agent_version).

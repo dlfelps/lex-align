@@ -61,7 +61,7 @@ class GlobalPolicies:
     auto_approve_licenses: list[str] = field(default_factory=list)
     hard_ban_licenses: list[str] = field(default_factory=list)
     require_human_review_licenses: list[str] = field(default_factory=list)
-    unknown_license_policy: str = "block"  # block | warn | allow
+    unknown_license_policy: str = "pending_approval"  # block | allow | pending_approval
     # CVSS-fraction threshold (0–1). A vulnerability whose CVSS score / 10
     # meets or exceeds this value is treated as a hard block.
     cve_threshold: float = 0.9
@@ -72,7 +72,7 @@ class GlobalPolicies:
             auto_approve_licenses=list(d.get("auto_approve_licenses") or []),
             hard_ban_licenses=list(d.get("hard_ban_licenses") or []),
             require_human_review_licenses=list(d.get("require_human_review_licenses") or []),
-            unknown_license_policy=d.get("unknown_license_policy", "block"),
+            unknown_license_policy=d.get("unknown_license_policy", "pending_approval"),
             cve_threshold=float(d.get("cve_threshold", 0.9)),
         )
 

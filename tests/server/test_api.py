@@ -19,6 +19,7 @@ from lex_align_server.api.v1 import (
 )
 from lex_align_server.audit import AuditStore
 from lex_align_server.authn import load_authenticator
+from lex_align_server.proposer import load_proposer
 from lex_align_server.cache import JsonCache
 from lex_align_server.config import Settings
 from lex_align_server.dashboards import router as dashboards_router
@@ -87,6 +88,7 @@ def _build_app(tmp_path, *, auth_enabled: bool = False, **settings_overrides) ->
             settings=settings, cache=cache, audit=audit,
             http=client, registry=_registry(),
             authenticator=load_authenticator(settings, client),
+            proposer=load_proposer(settings, client),
         )
         yield
         await client.aclose()
@@ -286,61 +288,69 @@ def test_approval_request_records_agent_identity(tmp_path):
         assert items[0]["agent_version"] == "4.7"
 
 
-def test_classify_endpoint_mutates_in_memory_registry(tmp_path):
-    """POST /api/v1/registry/packages adds the package to the live
-    registry, flips its pending requests to APPROVED, and the next
-    /evaluate call sees the new rule (no restart required)."""
+def test_proposals_endpoint_routes_through_proposer(tmp_path):
+    """POST /api/v1/registry/proposals fires the configured proposer.
+
+    With no REGISTRY_PATH / REGISTRY_REPO_URL the loader picks the
+    log-only backend, so the response carries ``status='logged'`` and
+    no durable change is made. That's the right behaviour for the
+    "evaluating lex-align with no policy repo" smoke-test path."""
     with TestClient(_build_app(tmp_path)) as client:
-        # Two devs ask for `requests-cache`; nothing in the registry yet.
-        client.post("/api/v1/approval-requests",
-                    json={"package": "requests-cache", "rationale": "need"},
-                    headers={"X-LexAlign-Project": "p1"})
-        client.post("/api/v1/approval-requests",
-                    json={"package": "requests_cache", "rationale": "also"},
-                    headers={"X-LexAlign-Project": "p2"})
-
-        # Operator classifies it as banned, with a reason.
-        r = client.post("/api/v1/registry/packages", json={
-            "name": "requests-cache",
-            "status": "banned",
-            "reason": "policy",
-        })
-        assert r.status_code == 200
-        body = r.json()
-        assert body["normalized_name"] == "requests_cache"
-        assert body["approved_requests"] == 2
-        assert body["persisted"] is False
-        assert "rebuild" in body["note"].lower()
-
-        # Subsequent /evaluate call sees the new rule immediately.
-        v = client.get(
-            "/api/v1/evaluate",
-            params={"package": "requests-cache"},
+        r = client.post(
+            "/api/v1/registry/proposals",
+            json={
+                "name": "requests-cache",
+                "status": "banned",
+                "reason": "policy",
+                "rationale": "operator triage",
+            },
             headers={"X-LexAlign-Project": "demo"},
         )
-        assert v.status_code == 200
-        assert v.json()["verdict"] == "DENIED"
-        assert v.json()["registry_status"] == "banned"
-
-        # Pending panel no longer surfaces it.
-        pending = client.get("/api/v1/registry/pending").json()["items"]
-        assert all(p["normalized_name"] != "requests_cache" for p in pending)
-
-        # The dashboard's GET /registry reflects the in-memory mutation.
-        reg = client.get("/api/v1/registry").json()
-        assert reg["packages"]["requests_cache"]["status"] == "banned"
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["backend"] == "log_only"
+        assert body["status"] == "logged"
 
 
-def test_classify_endpoint_rejects_invalid_rule(tmp_path):
+def test_proposals_endpoint_rejects_invalid_rule(tmp_path):
     """Validation matches the YAML-compile path: deprecated without
     replacement fails the same way it would in CI."""
     with TestClient(_build_app(tmp_path)) as client:
-        r = client.post("/api/v1/registry/packages", json={
-            "name": "foo",
-            "status": "deprecated",  # missing required `replacement`
-        })
+        r = client.post(
+            "/api/v1/registry/proposals",
+            json={"name": "foo", "status": "deprecated"},
+            headers={"X-LexAlign-Project": "demo"},
+        )
         assert r.status_code == 400
         assert "replacement" in r.json()["detail"]
+
+
+def test_proposals_endpoint_writes_through_local_file(tmp_path):
+    """When REGISTRY_PATH is set, the loader picks the local-file
+    backend; the YAML on disk reflects the proposed rule, validation
+    fails-loud rather than corrupting the file."""
+    registry_path = tmp_path / "registry.yml"
+    registry_path.write_text(
+        "version: '1'\n"
+        "global_policies: {}\n"
+        "packages: {}\n"
+    )
+    app = _build_app(tmp_path, registry_path=registry_path)
+    with TestClient(app) as client:
+        r = client.post(
+            "/api/v1/registry/proposals",
+            json={"name": "Some-Pkg", "status": "approved", "rationale": "ok"},
+            headers={"X-LexAlign-Project": "demo"},
+        )
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["backend"] == "local_file"
+        assert body["status"] == "applied"
+
+    # The YAML on disk reflects the proposal.
+    import yaml
+    on_disk = yaml.safe_load(registry_path.read_text())
+    assert on_disk["packages"]["some_pkg"]["status"] == "approved"
 
 
 def test_pending_endpoint_filters_registered_and_groups(tmp_path):
@@ -368,7 +378,11 @@ def test_pending_endpoint_filters_registered_and_groups(tmp_path):
 
         r = client.get("/api/v1/registry/pending")
         assert r.status_code == 200
-        items = {i["package"]: i for i in r.json()["items"]}
+        body = r.json()
+        # Phase 4: split into explicit (approval_requests rows) and
+        # implicit (audit_log inferences). For these test inserts only
+        # the explicit channel fires.
+        items = {i["package"]: i for i in body["explicit"]}
         assert set(items) == {"numpy", "scipy"}
         assert items["numpy"]["request_count"] == 2
 
@@ -423,6 +437,7 @@ def test_legal_and_security_reports_separate_categories(tmp_path):
             settings=settings, cache=cache, audit=audit,
             http=client, registry=_registry(),
             authenticator=load_authenticator(settings, client),
+            proposer=load_proposer(settings, client),
         )
         yield
         await client.aclose()

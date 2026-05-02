@@ -18,7 +18,6 @@ from pathlib import Path
 
 import click
 
-from .config import get_settings
 from .init import MARKER_FILENAME, init_target
 from .registry_schema import ValidationError, validate_registry
 
@@ -35,6 +34,7 @@ def main() -> None:
 def serve(host: str | None, port: int | None, reload: bool) -> None:
     """Start the lex-align FastAPI server via uvicorn."""
     import uvicorn
+    from .config import get_settings
     settings = get_settings()
     uvicorn.run(
         "lex_align_server.main:app",
