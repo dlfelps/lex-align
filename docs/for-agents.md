@@ -74,15 +74,18 @@ Run **only if** `.lexalign.toml` is absent. If the file exists, the
 project is already configured; running `init` again is a no-op at best
 and a footgun at worst.
 
-### Agent identity (optional)
+---
 
-Both `check` and `request-approval` accept `--agent-model` and
-`--agent-version`, which tag audit rows in the server dashboard so
-humans can see *which* agent submitted what. They default to the
-`LEXALIGN_AGENT_MODEL` and `LEXALIGN_AGENT_VERSION` environment
-variables. Inside Claude Code, the `SessionStart` hook auto-detects
-the model and exports both vars for the rest of the session, so you
-usually do not need to set them yourself.
+## Agent identity
+
+`check` and `request-approval` accept `--agent-model` and
+`--agent-version` flags that tag audit rows in the server dashboard,
+so humans reviewing the log can see *which* agent submitted what.
+Both flags fall back to the `LEXALIGN_AGENT_MODEL` and
+`LEXALIGN_AGENT_VERSION` environment variables. Inside Claude Code,
+the `SessionStart` hook auto-detects the model and exports both
+variables for the rest of the session — you usually do not need to
+set them yourself.
 
 ---
 
