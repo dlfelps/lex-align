@@ -182,6 +182,48 @@ def test_loader_picks_local_git_when_inside_working_tree(tmp_path):
     assert isinstance(proposer, LocalGitProposer)
 
 
+@pytest.mark.skipif(not GIT_AVAILABLE, reason="git binary not on PATH")
+def test_loader_picks_github_when_local_git_has_github_remote(tmp_path, monkeypatch):
+    """A local git repo whose origin points to GitHub, combined with a token
+    in the environment, should auto-select the GitHub proposer so approval
+    requests open PRs instead of just committing locally."""
+    subprocess.check_call(["git", "init", "-q", str(tmp_path)])
+    subprocess.check_call([
+        "git", "-C", str(tmp_path), "remote", "add", "origin",
+        "https://github.com/acme/policy.git",
+    ])
+    monkeypatch.setenv("GITHUB_TOKEN", "ghp_autodetected")
+    workdir = tmp_path / "workdir"
+    settings = Settings(
+        registry_path=tmp_path / "registry.yml",
+        registry_repo_workdir=workdir,
+    )
+    http = httpx.AsyncClient()
+    proposer = load_proposer(settings, http_client=http)
+    assert isinstance(proposer, GitHubProposer)
+    assert proposer.owner == "acme"
+    assert proposer.repo == "policy"
+    assert proposer.token == "ghp_autodetected"
+
+
+@pytest.mark.skipif(not GIT_AVAILABLE, reason="git binary not on PATH")
+def test_loader_picks_local_git_when_no_github_token(tmp_path, monkeypatch):
+    """Without a token, fall back to local_git even when origin is on GitHub."""
+    subprocess.check_call(["git", "init", "-q", str(tmp_path)])
+    subprocess.check_call([
+        "git", "-C", str(tmp_path), "remote", "add", "origin",
+        "https://github.com/acme/policy.git",
+    ])
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    monkeypatch.delenv("GH_TOKEN", raising=False)
+    settings = Settings(
+        registry_path=tmp_path / "registry.yml",
+        registry_repo_token="",
+    )
+    proposer = load_proposer(settings, http_client=None)  # type: ignore[arg-type]
+    assert isinstance(proposer, LocalGitProposer)
+
+
 def test_loader_picks_github_when_repo_url_set(tmp_path):
     settings = Settings(
         registry_repo_url="https://github.com/acme/policy",

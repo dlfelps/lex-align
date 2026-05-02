@@ -26,6 +26,7 @@ class LicenseVerdict:
     action: Action
     license: Optional[str]
     reason: str
+    needs_human_review: bool = False
 
 
 @dataclass
@@ -138,12 +139,22 @@ def evaluate_license(
             reason=f"License {license_normalized} is on the auto-approve list.",
         )
     if license_normalized == "UNKNOWN":
-        policy = (policies.unknown_license_policy or "block").lower()
+        policy = (policies.unknown_license_policy or "pending_approval").lower()
         if policy == "allow":
             return LicenseVerdict(
                 action=Action.ALLOW,
                 license=license_normalized,
                 reason="License could not be determined; unknown_license_policy=allow.",
+            )
+        if policy == "pending_approval":
+            return LicenseVerdict(
+                action=Action.ALLOW,
+                license=license_normalized,
+                reason=(
+                    "License could not be determined from PyPI; "
+                    "provisionally allowed pending human review."
+                ),
+                needs_human_review=True,
             )
         return LicenseVerdict(
             action=Action.BLOCK,

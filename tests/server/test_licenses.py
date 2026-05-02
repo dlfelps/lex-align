@@ -47,12 +47,29 @@ def test_evaluate_license_unknown_policy_allow():
     gp = GlobalPolicies.from_dict({"unknown_license_policy": "allow"})
     v = evaluate_license("UNKNOWN", gp)
     assert v.action is Action.ALLOW
+    assert v.needs_human_review is False
 
 
 def test_evaluate_license_unknown_policy_block():
     gp = GlobalPolicies.from_dict({"unknown_license_policy": "block"})
     v = evaluate_license("UNKNOWN", gp)
     assert v.action is Action.BLOCK
+    assert v.needs_human_review is False
+
+
+def test_evaluate_license_unknown_policy_pending_approval():
+    gp = GlobalPolicies.from_dict({"unknown_license_policy": "pending_approval"})
+    v = evaluate_license("UNKNOWN", gp)
+    assert v.action is Action.ALLOW
+    assert v.needs_human_review is True
+    assert "pending human review" in v.reason
+
+
+def test_evaluate_license_unknown_policy_default_is_pending_approval():
+    gp = GlobalPolicies.from_dict({})
+    v = evaluate_license("UNKNOWN", gp)
+    assert v.action is Action.ALLOW
+    assert v.needs_human_review is True
 
 
 @pytest.mark.asyncio

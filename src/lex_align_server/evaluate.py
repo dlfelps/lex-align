@@ -55,6 +55,7 @@ class EvaluationResult:
     max_cvss: Optional[float] = None
     is_requestable: bool = False
     needs_rationale: bool = False
+    auto_request_approval: bool = False
 
     def __post_init__(self) -> None:
         if self.cve_ids is None:
@@ -75,6 +76,7 @@ class EvaluationResult:
             "max_cvss": self.max_cvss,
             "is_requestable": self.is_requestable,
             "needs_rationale": self.needs_rationale,
+            "auto_request_approval": self.auto_request_approval,
         }
 
 
@@ -205,14 +207,22 @@ async def evaluate(
             await _audit(audit, result, project, requester, agent, DENIAL_LICENSE)
             return result
         # Unknown but license-passing → provisionally allowed.
-        result = EvaluationResult(
-            verdict=VERDICT_PROVISIONALLY_ALLOWED,
-            reason=(
+        if lic_verdict.needs_human_review:
+            prov_reason = (
+                "Not yet in the enterprise registry. License could not be "
+                "determined; provisionally allowed pending human review. "
+                "An approval request will be automatically submitted."
+            )
+        else:
+            prov_reason = (
                 "Not yet in the enterprise registry. License "
                 f"{license_info.license_normalized} is on the auto-approve list "
                 "and no critical CVEs are reported. Run `lex-align-client "
                 "request-approval` to formalize."
-            ),
+            )
+        result = EvaluationResult(
+            verdict=VERDICT_PROVISIONALLY_ALLOWED,
+            reason=prov_reason,
             package=package,
             version=version,
             resolved_version=cve_query_version,
@@ -221,6 +231,7 @@ async def evaluate(
             cve_ids=list(cves.ids),
             max_cvss=cves.max_score,
             is_requestable=True,
+            auto_request_approval=lic_verdict.needs_human_review,
         )
         await _audit(audit, result, project, requester, agent, DENIAL_NONE)
         return result

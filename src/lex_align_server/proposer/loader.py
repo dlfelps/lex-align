@@ -20,10 +20,11 @@ from __future__ import annotations
 
 import importlib
 import logging
+import os
 import shutil
 import subprocess
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 import httpx
 
@@ -73,10 +74,35 @@ def load_proposer(
         )
 
     if backend == "github":
+        repo_url = settings.registry_repo_url or ""
+        token = settings.registry_repo_token or ""
+        registry_file_path = settings.registry_file_path or "registry.yml"
+
+        # When the operator hasn't set REGISTRY_REPO_URL, auto-detect from the
+        # local git working tree (remote URL + credentials from the environment).
+        if not repo_url and settings.registry_path is not None:
+            candidate = (
+                settings.registry_path
+                if settings.registry_path.exists()
+                else settings.registry_path.parent
+            )
+            repo_url = _detect_github_remote(candidate) or ""
+            if not token:
+                token = _get_github_token(settings) or ""
+            if not settings.registry_file_path:
+                repo_root = _get_git_repo_root(candidate)
+                if repo_root and settings.registry_path:
+                    try:
+                        registry_file_path = str(
+                            settings.registry_path.relative_to(repo_root)
+                        )
+                    except ValueError:
+                        registry_file_path = "registry.yml"
+
         return GitHubProposer(
-            repo_url=settings.registry_repo_url or "",
-            registry_file_path=settings.registry_file_path or "registry.yml",
-            token=settings.registry_repo_token or "",
+            repo_url=repo_url,
+            registry_file_path=registry_file_path,
+            token=token,
             http_client=http_client,
             workdir=Path(settings.registry_repo_workdir),
             api_base=settings.github_api_base,
@@ -103,6 +129,14 @@ def _autodetect(settings: "Settings") -> str:
         # We don't need the path to exist yet — only its parent must.
         candidate = path if path.exists() else path.parent
         if candidate.exists() and _is_git_working_tree(candidate):
+            # If the repo has a GitHub remote and credentials are available,
+            # prefer the GitHub proposer so approval requests open real PRs.
+            if _detect_github_remote(candidate) and _get_github_token(settings):
+                logger.info(
+                    "registry proposer: detected GitHub remote with credentials; "
+                    "using github backend for PR-based review."
+                )
+                return "github"
             return "local_git"
         if candidate.exists() and _is_writable(candidate if candidate.is_dir() else candidate.parent):
             return "local_file"
@@ -127,11 +161,49 @@ def _is_git_working_tree(path: Path) -> bool:
 
 
 def _is_writable(path: Path) -> bool:
-    import os
     try:
         return os.access(path, os.W_OK)
     except OSError:
         return False
+
+
+def _detect_github_remote(path: Path) -> Optional[str]:
+    """Return the GitHub remote URL if the git repo's origin points to GitHub."""
+    if not shutil.which("git"):
+        return None
+    try:
+        url = subprocess.check_output(
+            ["git", "-C", str(path), "remote", "get-url", "origin"],
+            stderr=subprocess.DEVNULL, text=True,
+        ).strip()
+        if "github.com" in url:
+            return url
+        return None
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return None
+
+
+def _get_github_token(settings: "Settings") -> Optional[str]:
+    """Return a GitHub token from settings or well-known environment variables."""
+    return (
+        settings.registry_repo_token
+        or os.environ.get("GITHUB_TOKEN")
+        or os.environ.get("GH_TOKEN")
+    ) or None
+
+
+def _get_git_repo_root(path: Path) -> Optional[Path]:
+    """Return the root of the git working tree that contains path."""
+    if not shutil.which("git"):
+        return None
+    try:
+        root = subprocess.check_output(
+            ["git", "-C", str(path), "rev-parse", "--show-toplevel"],
+            stderr=subprocess.DEVNULL, text=True,
+        ).strip()
+        return Path(root)
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return None
 
 
 def _load_module_proposer(
