@@ -1,0 +1,418 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>{{ title }}</title>
+<style>
+  :root {
+    --border: #e3e3e3;
+    --bg: #fafafa;
+    --muted: #666;
+    --c-critical: #7f1d1d;
+    --c-high:     #b91c1c;
+    --c-medium:   #c2410c;
+    --c-low:      #b45309;
+    --c-unknown:  #6b7280;
+    --c-allowed:     #0a8a6f;
+    --c-provisional: #b97f00;
+    --c-denied:      #b00;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: system-ui, sans-serif;
+    max-width: 1200px;
+    margin: 1.5rem auto;
+    padding: 0 1rem;
+    color: #222;
+  }
+  h1 { margin-bottom: 0.25rem; }
+  h2 { margin-top: 2rem; }
+  .subtitle { color: var(--muted); margin-top: 0; }
+  form#filter {
+    display: flex; gap: 0.5rem; align-items: center;
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: 6px; padding: 0.6rem; margin: 1rem 0;
+  }
+  input[type=text] { padding: 0.35rem 0.5rem; }
+  button {
+    background: #fff; border: 1px solid #bbb; border-radius: 4px;
+    padding: 0.35rem 0.7rem; cursor: pointer; font: inherit;
+  }
+  button:hover { background: #f0f0f0; }
+  .kpi-row {
+    display: grid; grid-template-columns: repeat(5, 1fr);
+    gap: 0.6rem; margin: 0.5rem 0 1rem;
+  }
+  @media (max-width: 900px) { .kpi-row { grid-template-columns: repeat(2, 1fr); } }
+  .kpi {
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: 6px; padding: 0.7rem 0.9rem;
+  }
+  .kpi .label { color: var(--muted); font-size: 0.85rem; }
+  .kpi .value { font-size: 1.6rem; font-weight: 600; }
+  .kpi.critical .value { color: var(--c-critical); }
+  .kpi.high     .value { color: var(--c-high); }
+  .kpi.medium   .value { color: var(--c-medium); }
+  .kpi.low      .value { color: var(--c-low); }
+  .kpi.unknown  .value { color: var(--c-unknown); }
+  table { border-collapse: collapse; width: 100%; font-size: 0.9rem; }
+  th, td {
+    text-align: left; padding: 0.4rem 0.6rem;
+    border-bottom: 1px solid var(--border); vertical-align: top;
+  }
+  th { background: var(--bg); }
+  tr:hover td { background: #fcfcfc; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .severity-badge {
+    display: inline-block; padding: 0.05rem 0.5rem;
+    border-radius: 3px; font-size: 0.78rem; font-weight: 600;
+    color: #fff; white-space: nowrap;
+  }
+  .severity-badge.critical { background: var(--c-critical); }
+  .severity-badge.high     { background: var(--c-high); }
+  .severity-badge.medium   { background: var(--c-medium); }
+  .severity-badge.low      { background: var(--c-low); }
+  .severity-badge.unknown  { background: var(--c-unknown); }
+  .cvss {
+    font-family: ui-monospace, monospace; font-size: 0.85rem;
+    color: #111;
+  }
+  .cve-id {
+    font-family: ui-monospace, monospace; font-size: 0.8rem;
+    background: #f1f5f9; padding: 0.05rem 0.35rem; border-radius: 3px;
+    color: #0f172a; display: inline-block; margin-right: 0.2rem;
+    margin-bottom: 0.15rem;
+  }
+  .agent {
+    display: inline-block; padding: 0.05rem 0.4rem; border-radius: 3px;
+    background: #eef2ff; color: #3730a3; font-size: 0.8rem;
+    font-family: ui-monospace, monospace;
+  }
+  .agent.unknown { background: #f3f4f6; color: #6b7280; }
+  .ts { white-space: nowrap; color: var(--muted); font-size: 0.85rem; }
+  .empty { padding: 1.5rem; text-align: center; color: var(--muted); }
+  pre.raw {
+    background: #f4f4f4; padding: 0.75rem; border-radius: 4px;
+    overflow-x: auto; font-size: 0.8rem; max-height: 18rem;
+  }
+  details > summary { cursor: pointer; color: var(--muted); font-size: 0.9rem; }
+  .grid-2 {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;
+  }
+  @media (max-width: 720px) { .grid-2 { grid-template-columns: 1fr; } }
+  .panel {
+    border: 1px solid var(--border); border-radius: 6px; padding: 0.7rem 0.9rem;
+  }
+  .panel h3 { margin: 0 0 0.5rem; font-size: 1rem; }
+  /* "Hot" packages — registry says ALLOW, OSV now disagrees. Loud styling
+     because this is the highest-signal cell on the page. */
+  .hot-panel {
+    border: 1px solid #fca5a5; border-radius: 6px;
+    background: #fef2f2; padding: 0.5rem 0.8rem; margin: 1rem 0;
+  }
+  .hot-panel header {
+    color: #7f1d1d; font-weight: 600; padding: 0.2rem 0;
+  }
+  .hot-panel .count {
+    background: #b91c1c; color: #fff; padding: 0 0.5rem;
+    border-radius: 999px; font-size: 0.8rem; margin-left: 0.4rem;
+  }
+  .hot-panel.empty { display: none; }
+  .registry-status {
+    display: inline-block; padding: 0.05rem 0.5rem; border-radius: 999px;
+    font-size: 0.75rem; font-weight: 600; color: #fff; background: #4b6cb7;
+  }
+  .registry-status.preferred           { background: #0a8a6f; }
+  .registry-status.approved            { background: #4b6cb7; }
+  .registry-status.version-constrained { background: #6a4cab; }
+</style>
+</head>
+<body>
+<h1>{{ title }}</h1>
+<p class="subtitle">
+  Vulnerability posture, from <code>{{ endpoint }}</code>. Severity bands
+  follow the CVSS v3 convention (critical ≥ 9.0, high ≥ 7.0, medium ≥ 4.0,
+  low &gt; 0). The block threshold lives in
+  <a href="/dashboard/registry">global policies</a>.
+</p>
+
+<form id="filter">
+  <label>Project: <input type="text" name="project" placeholder="(all projects)"></label>
+  <button type="submit">Reload</button>
+</form>
+
+<div id="content">Loading…</div>
+
+<script>
+const ENDPOINT = "{{ endpoint }}";
+
+const SEVERITY_ORDER = ["critical", "high", "medium", "low", "unknown"];
+
+function fmtTs(iso) {
+  if (!iso) return "";
+  try {
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return iso;
+    return d.toISOString().replace("T", " ").slice(0, 19) + " UTC";
+  } catch { return iso; }
+}
+
+function escape(s) {
+  return String(s == null ? "" : s)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function severityFor(score) {
+  if (score == null) return "unknown";
+  if (score >= 9.0) return "critical";
+  if (score >= 7.0) return "high";
+  if (score >= 4.0) return "medium";
+  if (score > 0)    return "low";
+  return "unknown";
+}
+
+function severityBadge(score) {
+  const cls = severityFor(score);
+  const label = score == null ? cls : `${cls} ${score.toFixed(1)}`;
+  return `<span class="severity-badge ${cls}">${label}</span>`;
+}
+
+function cveList(ids) {
+  if (!ids || !ids.length) return "";
+  return ids.slice(0, 5).map(id => `<span class="cve-id">${escape(id)}</span>`).join("")
+    + (ids.length > 5 ? ` <span class="ts">+${ids.length - 5} more</span>` : "");
+}
+
+function agentBadge(model, version) {
+  if (!model && !version) return '<span class="agent unknown">unknown</span>';
+  const label = [model, version].filter(Boolean).join(" ");
+  return `<span class="agent">${escape(label)}</span>`;
+}
+
+function renderKpis(data) {
+  const dist = data.severity_distribution || {};
+  const denials = data.total_denials || 0;
+  const wrap = document.createElement("div");
+  wrap.className = "kpi-row";
+  wrap.innerHTML = `
+    <div class="kpi"><div class="label">CVE-driven denials</div>
+      <div class="value">${denials}</div></div>
+    <div class="kpi critical"><div class="label">Critical (≥ 9.0)</div>
+      <div class="value">${dist.critical || 0}</div></div>
+    <div class="kpi high"><div class="label">High (≥ 7.0)</div>
+      <div class="value">${dist.high || 0}</div></div>
+    <div class="kpi medium"><div class="label">Medium (≥ 4.0)</div>
+      <div class="value">${dist.medium || 0}</div></div>
+    <div class="kpi low"><div class="label">Low / Unknown</div>
+      <div class="value">${(dist.low || 0) + (dist.unknown || 0)}</div></div>
+  `;
+  return wrap;
+}
+
+function renderHotPackages(data) {
+  const hot = data.hot_registry_packages || [];
+  const panel = document.createElement("section");
+  panel.className = "hot-panel" + (hot.length ? "" : " empty");
+  panel.innerHTML = `
+    <header>
+      Already-approved packages with new CVE activity
+      <span class="count">${hot.length}</span>
+      <span style="font-weight:normal; font-size:0.85rem; margin-left:0.4rem; color:var(--muted);">
+        — registry says yes, OSV now says wait
+      </span>
+    </header>
+  `;
+  if (!hot.length) return panel;
+  const table = document.createElement("table");
+  table.innerHTML = `
+    <thead><tr>
+      <th>Package</th><th>Registry status</th>
+      <th>CVSS</th><th class="num">Denials</th><th class="num">Provisional</th>
+      <th>CVE IDs</th><th>Last seen</th>
+    </tr></thead>
+    <tbody></tbody>
+  `;
+  const tbody = table.querySelector("tbody");
+  for (const r of hot) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td><strong>${escape(r.package)}</strong></td>
+      <td><span class="registry-status ${escape(r.registry_status)}">${escape(r.registry_status)}</span></td>
+      <td>${severityBadge(r.max_cvss)}</td>
+      <td class="num">${r.denials || 0}</td>
+      <td class="num">${r.provisional || 0}</td>
+      <td>${cveList(r.cve_ids)}</td>
+      <td class="ts">${escape(fmtTs(r.latest_ts))}</td>
+    `;
+    tbody.appendChild(tr);
+  }
+  panel.appendChild(table);
+  return panel;
+}
+
+function renderTopPackages(data) {
+  const rows = data.top_packages || [];
+  const c = document.createElement("section");
+  c.innerHTML = `<h2>Top packages by CVE-driven denials</h2>`;
+  if (!rows.length) {
+    const empty = document.createElement("div");
+    empty.className = "empty";
+    empty.textContent = "No CVE-driven denials yet.";
+    c.appendChild(empty);
+    return c;
+  }
+  const table = document.createElement("table");
+  table.innerHTML = `
+    <thead><tr>
+      <th>Package</th><th>Highest CVSS</th>
+      <th class="num">Denials</th><th>CVE IDs</th>
+    </tr></thead>
+    <tbody></tbody>
+  `;
+  const tbody = table.querySelector("tbody");
+  for (const r of rows) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td><strong>${escape(r.package)}</strong></td>
+      <td>${severityBadge(r.max_cvss)}</td>
+      <td class="num">${r.denials}</td>
+      <td>${cveList(r.cve_ids)}</td>
+    `;
+    tbody.appendChild(tr);
+  }
+  c.appendChild(table);
+  return c;
+}
+
+function renderTopCves(data) {
+  const rows = data.top_cves || [];
+  const c = document.createElement("div");
+  c.className = "panel";
+  c.innerHTML = `<h3>Top CVE identifiers</h3>`;
+  if (!rows.length) {
+    const empty = document.createElement("div");
+    empty.className = "empty";
+    empty.textContent = "No CVE identifiers in the audit log yet.";
+    c.appendChild(empty);
+    return c;
+  }
+  const table = document.createElement("table");
+  table.innerHTML = `
+    <thead><tr>
+      <th>CVE</th><th>CVSS</th>
+      <th class="num">Hits</th><th>Packages</th>
+    </tr></thead>
+    <tbody></tbody>
+  `;
+  const tbody = table.querySelector("tbody");
+  for (const r of rows) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td><span class="cve-id">${escape(r.cve_id)}</span></td>
+      <td>${severityBadge(r.max_cvss)}</td>
+      <td class="num">${r.occurrences}</td>
+      <td>${(r.packages || []).map(p => escape(p)).join(", ")}</td>
+    `;
+    tbody.appendChild(tr);
+  }
+  c.appendChild(table);
+  return c;
+}
+
+function renderSeverityPanel(data) {
+  const dist = data.severity_distribution || {};
+  const c = document.createElement("div");
+  c.className = "panel";
+  c.innerHTML = `
+    <h3>Severity distribution</h3>
+    <p style="color:var(--muted); font-size:0.85rem; margin:0 0 0.4rem;">
+      All CVE-denied audit rows in scope, bucketed by their highest reported CVSS.
+    </p>
+  `;
+  const table = document.createElement("table");
+  table.innerHTML = `
+    <thead><tr><th>Severity</th><th class="num">Denials</th></tr></thead>
+    <tbody></tbody>
+  `;
+  const tbody = table.querySelector("tbody");
+  for (const sev of SEVERITY_ORDER) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td><span class="severity-badge ${sev}">${sev}</span></td>
+      <td class="num">${dist[sev] || 0}</td>
+    `;
+    tbody.appendChild(tr);
+  }
+  c.appendChild(table);
+  return c;
+}
+
+function renderRecent(data) {
+  const recent = data.recent || [];
+  const c = document.createElement("section");
+  c.innerHTML = `<h2>Most recent CVE denials (${recent.length})</h2>`;
+  if (!recent.length) {
+    const empty = document.createElement("div");
+    empty.className = "empty";
+    empty.textContent = "No CVE denials recorded.";
+    c.appendChild(empty);
+    return c;
+  }
+  const table = document.createElement("table");
+  table.innerHTML = `
+    <thead><tr>
+      <th>When</th><th>Project</th><th>Package</th>
+      <th>CVSS</th><th>CVE IDs</th><th>Reason</th><th>Agent</th>
+    </tr></thead>
+    <tbody></tbody>
+  `;
+  const tbody = table.querySelector("tbody");
+  for (const r of recent) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td class="ts">${escape(fmtTs(r.ts))}</td>
+      <td>${escape(r.project)}</td>
+      <td><strong>${escape(r.package)}</strong>${r.version ? " " + escape(r.version) : ""}</td>
+      <td>${severityBadge(r.max_cvss)}</td>
+      <td>${cveList(r.cve_ids || [])}</td>
+      <td>${escape(r.reason || "")}</td>
+      <td>${agentBadge(r.agent_model, r.agent_version)}</td>
+    `;
+    tbody.appendChild(tr);
+  }
+  c.appendChild(table);
+  return c;
+}
+
+async function load() {
+  const params = new URLSearchParams(new FormData(document.getElementById("filter")));
+  const url = ENDPOINT + (params.toString() ? "?" + params : "");
+  const r = await fetch(url);
+  const data = await r.json();
+  const target = document.getElementById("content");
+  target.innerHTML = "";
+  target.appendChild(renderKpis(data));
+  target.appendChild(renderHotPackages(data));
+  target.appendChild(renderTopPackages(data));
+
+  const grid = document.createElement("div");
+  grid.className = "grid-2";
+  grid.appendChild(renderSeverityPanel(data));
+  grid.appendChild(renderTopCves(data));
+  target.appendChild(grid);
+
+  target.appendChild(renderRecent(data));
+
+  const raw = document.createElement("details");
+  raw.innerHTML = `<summary>Raw JSON</summary>`;
+  const pre = document.createElement("pre");
+  pre.className = "raw";
+  pre.textContent = JSON.stringify(data, null, 2);
+  raw.appendChild(pre);
+  target.appendChild(raw);
+}
+document.getElementById("filter").addEventListener("submit", e => { e.preventDefault(); load(); });
+load();
+</script>
+</body>
+</html>

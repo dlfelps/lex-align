@@ -106,6 +106,7 @@ nav:
   - Getting Started: getting-started.md
   - Org Mode Authentication: org-mode-auth.md
   - Approvals & Reloads: git-backed-approvals.md
+  - Dashboards: dashboards.md
   - Agent Support: agent-support.md
   - For Agents: for-agents.md
   - API Reference: api.md
