@@ -131,7 +131,7 @@ The shortest path from zero to a working `check`:
 
 ```bash
 # 1. Server (one-time, on a host you control)
-pip install "lex-align[server]"
+pip install lex-align
 lex-align-server init && cd lexalign
 lex-align-server registry compile registry.yml registry.json
 docker compose up -d

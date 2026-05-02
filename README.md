@@ -52,7 +52,7 @@ mode is the default.
 
 ```bash
 # Server (host you control)
-pip install "lex-align[server]"
+pip install lex-align
 lex-align-server init && cd lexalign
 lex-align-server registry compile registry.yml registry.json
 docker compose up -d
@@ -98,7 +98,7 @@ need a polished triage dashboard, this isn't that tool — yet.
 ## Contributing
 
 ```bash
-uv sync --all-extras --all-groups
+uv sync --all-groups
 uv run pytest
 ```
 

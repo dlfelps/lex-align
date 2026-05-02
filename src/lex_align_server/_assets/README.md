@@ -18,7 +18,7 @@ stack is alive end-to-end.
 
 | File | Purpose |
 |---|---|
-| `Dockerfile` | Pulls `lex-align[server]` from PyPI. |
+| `Dockerfile` | Pulls `lex-align` from PyPI. |
 | `docker-compose.yml` | Server + Redis stack. Single-user mode by default. |
 | `.env.example` | Copy to `.env`. Holds `AUTH_ENABLED`, `CVE_THRESHOLD`, etc. |
 | `registry.yml` | Human-authored enterprise registry. Edit this. |
