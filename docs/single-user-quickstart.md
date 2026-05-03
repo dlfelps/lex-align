@@ -1,9 +1,7 @@
 # Single-user quickstart
 
 The fastest path from `pip install lex-align` to a governed project,
-on one laptop, with no Docker. If you're rolling lex-align out across
-a team, follow [Getting Started](getting-started.md) instead — that
-path uses Docker Compose and a registry that survives reboots.
+on one laptop, with no Docker.
 
 The single-user path is for evaluation, solo developers, and writing
 docs about lex-align. It is fully functional: every gate (registry,
@@ -127,17 +125,11 @@ Edit it, then either restart the server (Ctrl-C and re-run
 interval defaults to 5 minutes and is configurable via
 `REGISTRY_RELOAD_INTERVAL`.
 
-## When to graduate to Docker
+## When you need more
 
-You'll want the full [Getting Started](getting-started.md) path if you
-need any of:
-
-* multi-user access — the quickstart binds 127.0.0.1 and runs anonymous
-* persistent Redis caching for license / CVE lookups
-* PR-based approval flows ([git-backed approvals](git-backed-approvals.md))
-* `systemd` / managed service guarantees
-
-Migration is straightforward: copy `~/.lexalign/registry.yml` into
-`./lexalign/registry.yml` after `lex-align-server init`, then bring up
-the compose stack. The audit DB is sqlite either way, so you can copy
-that across too if you want to preserve history.
+The quickstart binds `127.0.0.1` and runs without authentication. If
+you need multi-user access, persistent Redis caching, or a managed
+service deployment, a Docker Compose stack is the next step. Migration
+is straightforward: copy `~/.lexalign/registry.yml` into
+`./lexalign/registry.yml` after `lex-align-server init`. The audit DB
+is SQLite either way, so you can carry history across too.

@@ -42,8 +42,7 @@ enforcement for Python projects, single-user by default.
 Approvals now flow through a pluggable *proposer*: opens a PR (GitHub
 backend), commits to a local repo (local-git), writes YAML directly
 (local-file), or just logs (log-only / evaluation). The server
-hot-reloads on merge or YAML write — no restarts. See
-[Approvals & Reloads](git-backed-approvals.md) for the full flow.
+hot-reloads on merge or YAML write — no restarts.
 
 The dashboard's pending queue gained an "implicit candidates" section
 that surfaces packages your audit log has seen but no one filed an
