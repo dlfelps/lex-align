@@ -2,6 +2,9 @@
 
 Exposes:
   * `serve`              — run uvicorn against the FastAPI app.
+  * `quickstart`         — Docker-free single-user bring-up: materialize a
+                            local registry + sqlite, then run the server
+                            in-process on 127.0.0.1:8765.
   * `init`               — materialize the operator bundle (compose stack,
                             Dockerfile, registry, .env) into a target dir.
   * `check-config`       — pre-flight checks for a single-team install:
@@ -15,6 +18,7 @@ Exposes:
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -22,6 +26,9 @@ import click
 
 from .check_config import FAIL, OK, WARN, run_checks_sync
 from .init import MARKER_FILENAME, init_target
+from .quickstart import apply_env as quickstart_apply_env
+from .quickstart import default_target as quickstart_default_target
+from .quickstart import materialize as quickstart_materialize
 from .registry_schema import ValidationError, validate_registry
 
 
@@ -44,6 +51,88 @@ def serve(host: str | None, port: int | None, reload: bool) -> None:
         host=host or settings.bind_host,
         port=port or settings.bind_port,
         reload=reload,
+    )
+
+
+# ── quickstart ────────────────────────────────────────────────────────────
+
+
+@main.command()
+@click.option(
+    "--target",
+    default=None,
+    type=click.Path(file_okay=False, path_type=Path),
+    help="Directory for the registry + audit DB. Defaults to ~/.lexalign.",
+)
+@click.option("--host", default="127.0.0.1", help="Bind host (default 127.0.0.1).")
+@click.option("--port", default=8765, type=int, help="Bind port (default 8765).")
+@click.option(
+    "--no-serve",
+    is_flag=True,
+    help="Materialize the directory and exit without starting uvicorn.",
+)
+@click.option(
+    "--force",
+    is_flag=True,
+    help="Overwrite an existing registry.yml in the target directory.",
+)
+def quickstart(
+    target: Path | None,
+    host: str,
+    port: int,
+    no_serve: bool,
+    force: bool,
+) -> None:
+    """Docker-free single-user bring-up.
+
+    Lays down a local registry + sqlite under ``--target`` (default
+    ``~/.lexalign``), then runs the server in-process on
+    ``http://127.0.0.1:8765``. Redis is skipped (the cache layer
+    silently degrades). Stop with Ctrl-C.
+
+    For multi-user deployments use `lex-align-server init` + Docker
+    Compose instead.
+    """
+    target = target or quickstart_default_target()
+    try:
+        result = quickstart_materialize(
+            target, bind_host=host, bind_port=port, force=force
+        )
+    except ValidationError as exc:
+        raise click.ClickException(f"Registry validation failed: {exc}")
+
+    for p in result.written:
+        click.echo(f"  + {p}")
+    for p in result.skipped:
+        click.echo(f"  · skipped (exists) {p}")
+
+    click.echo("")
+    click.echo(f"Quickstart bundle ready under {result.target}.")
+    click.echo(f"  registry: {result.registry_yml}")
+    click.echo(f"  audit DB: {result.database_path}")
+    click.echo("")
+
+    if no_serve:
+        click.echo("Skipping `serve` (--no-serve). Start later with:")
+        click.echo(
+            "  REGISTRY_PATH={reg} DATABASE_PATH={db} BIND_HOST={h} BIND_PORT={p} "
+            "lex-align-server serve".format(
+                reg=result.registry_yml, db=result.database_path,
+                h=result.bind_host, p=result.bind_port,
+            )
+        )
+        return
+
+    os.environ.update(quickstart_apply_env(result))
+
+    click.echo(f"Starting server on http://{result.bind_host}:{result.bind_port} (Ctrl-C to stop)")
+    click.echo("Run `lex-align-client init` in another terminal to point a project at it.")
+    click.echo("")
+    import uvicorn
+    uvicorn.run(
+        "lex_align_server.main:app",
+        host=result.bind_host,
+        port=result.bind_port,
     )
 
 

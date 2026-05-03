@@ -43,3 +43,22 @@ def test_find_project_root_falls_back_to_cwd(tmp_path: Path):
 
 def test_config_path_constant(tmp_path: Path):
     assert config_path(tmp_path).name == CONFIG_FILENAME
+
+
+def test_auto_request_approval_defaults_to_true_for_single_user():
+    cfg = ClientConfig.from_dict({"project": "demo"})
+    assert cfg.mode == "single-user"
+    assert cfg.auto_request_approval is True
+
+
+def test_auto_request_approval_defaults_to_false_for_org():
+    cfg = ClientConfig.from_dict({"project": "demo", "mode": "org"})
+    assert cfg.mode == "org"
+    assert cfg.auto_request_approval is False
+
+
+def test_auto_request_approval_round_trips(tmp_path: Path):
+    cfg = ClientConfig(project="demo", auto_request_approval=False)
+    save_config(tmp_path, cfg)
+    loaded = load_config(tmp_path)
+    assert loaded.auto_request_approval is False

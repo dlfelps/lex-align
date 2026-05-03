@@ -25,6 +25,8 @@ def _verdict(verdict: str, package: str, **kwargs) -> Verdict:
 class _StubClient:
     def __init__(self, by_package: dict[str, Verdict]):
         self._verdicts = by_package
+        self.approvals: list[tuple[str, str]] = []
+        self.approval_should_raise: Optional[Exception] = None
 
     def __enter__(self) -> "_StubClient":
         return self
@@ -37,6 +39,18 @@ class _StubClient:
 
     def health(self) -> dict:
         return {"redis": "ok", "db": "ok", "registry_loaded": True}
+
+    def pending_approvals(self, project=None) -> list[dict]:
+        return []
+
+    def security_report(self, project=None) -> dict:
+        return {}
+
+    def request_approval(self, package: str, rationale: str) -> dict:
+        if self.approval_should_raise is not None:
+            raise self.approval_should_raise
+        self.approvals.append((package, rationale))
+        return {"request_id": "x", "status": "PENDING_REVIEW", "package": package}
 
 
 def _seed(tmp_path: Path, deps: list[str]):
@@ -197,3 +211,111 @@ def test_pre_tool_use_passes_agent_to_client(tmp_path: Path, monkeypatch):
     claude_hooks.handle_pre_tool_use(event, tmp_path, config)
     assert captured["kwargs"]["agent_model"] == "opus"
     assert captured["kwargs"]["agent_version"] == "4.7"
+
+
+def test_pre_tool_use_auto_enqueues_provisional(tmp_path: Path, monkeypatch):
+    """In single-user mode, a PROVISIONALLY_ALLOWED verdict should
+    auto-fire request-approval so the user-as-reviewer flow stays a
+    single tool call from Claude's perspective."""
+    _seed(tmp_path, ["click"])
+    stub = _StubClient({
+        "newpkg": _verdict(
+            "PROVISIONALLY_ALLOWED", "newpkg",
+            reason="not in registry; license + CVE pass",
+            license="MIT", is_requestable=True,
+        ),
+    })
+    monkeypatch.setattr(claude_hooks, "LexAlignClient", lambda cfg, **_: stub)
+    config = ClientConfig(project="demo", auto_request_approval=True)
+    event = {
+        "tool_name": "Edit",
+        "tool_input": {
+            "path": str(tmp_path / "pyproject.toml"),
+            "old_string": '"click"',
+            "new_string": '"click", "newpkg"',
+        },
+    }
+    decision, msg = claude_hooks.handle_pre_tool_use(event, tmp_path, config)
+    assert decision == "allow"
+    assert "auto-enqueued for review" in msg
+    assert len(stub.approvals) == 1
+    pkg, rationale = stub.approvals[0]
+    assert pkg == "newpkg"
+    assert "newpkg" in rationale
+    assert "MIT" in rationale
+
+
+def test_pre_tool_use_skips_auto_enqueue_when_disabled(tmp_path: Path, monkeypatch):
+    """With auto_request_approval=False the hook reverts to the
+    advisory message and does not POST anything."""
+    _seed(tmp_path, ["click"])
+    stub = _StubClient({
+        "newpkg": _verdict(
+            "PROVISIONALLY_ALLOWED", "newpkg",
+            reason="not in registry; license + CVE pass",
+            is_requestable=True,
+        ),
+    })
+    monkeypatch.setattr(claude_hooks, "LexAlignClient", lambda cfg, **_: stub)
+    config = ClientConfig(project="demo", auto_request_approval=False)
+    event = {
+        "tool_name": "Edit",
+        "tool_input": {
+            "path": str(tmp_path / "pyproject.toml"),
+            "old_string": '"click"',
+            "new_string": '"click", "newpkg"',
+        },
+    }
+    decision, msg = claude_hooks.handle_pre_tool_use(event, tmp_path, config)
+    assert decision == "allow"
+    assert stub.approvals == []
+    assert "request-approval" in msg
+
+
+def test_pre_tool_use_auto_enqueue_failure_does_not_block(tmp_path: Path, monkeypatch):
+    """If the proposer is briefly unavailable the edit should still go
+    through — the rationale is informational, not a gate."""
+    from lex_align_client.api import ServerUnreachable
+
+    _seed(tmp_path, ["click"])
+    stub = _StubClient({
+        "newpkg": _verdict(
+            "PROVISIONALLY_ALLOWED", "newpkg", reason="ok",
+            is_requestable=True,
+        ),
+    })
+    stub.approval_should_raise = ServerUnreachable("connection refused")
+    monkeypatch.setattr(claude_hooks, "LexAlignClient", lambda cfg, **_: stub)
+    config = ClientConfig(project="demo", auto_request_approval=True)
+    event = {
+        "tool_name": "Edit",
+        "tool_input": {
+            "path": str(tmp_path / "pyproject.toml"),
+            "old_string": '"click"',
+            "new_string": '"click", "newpkg"',
+        },
+    }
+    decision, msg = claude_hooks.handle_pre_tool_use(event, tmp_path, config)
+    assert decision == "allow"
+    assert "auto-enqueue failed" in msg
+
+
+def test_session_start_brief_includes_pending_approvals(tmp_path: Path, monkeypatch):
+    _seed(tmp_path, ["click"])
+
+    class _BriefStub(_StubClient):
+        def pending_approvals(self, project=None):
+            return [{"package": "alpha"}, {"package": "beta"}]
+
+        def security_report(self, project=None):
+            return {"severity_distribution": {"critical": 2, "high": 1}}
+
+    monkeypatch.setattr(
+        claude_hooks, "LexAlignClient",
+        lambda cfg, **_: _BriefStub({}),
+    )
+    config = ClientConfig(project="demo")
+    text = claude_hooks.handle_session_start({}, tmp_path, config)
+    assert "Pending approvals: 2" in text
+    assert "alpha" in text
+    assert "CVE pressure: critical=2" in text

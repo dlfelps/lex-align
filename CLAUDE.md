@@ -20,9 +20,20 @@ The verdict will be one of:
 * `PROVISIONALLY_ALLOWED` — proceed, then run
   `lex-align-client request-approval --package <name> --rationale "<why>"`
   to enqueue formal addition to the registry. Do not wait for review.
+  In single-user mode the `PreToolUse` hook auto-enqueues for you;
+  call `request-approval` manually only if the auto-enqueue failed.
 * `DENIED` — do not add the package. The `reason` field explains whether
   it was the registry, a critical CVE, or the license. If a `replacement`
   is provided, prefer it.
+
+### Other useful commands
+
+* `lex-align-client audit` — re-evaluate every dep in
+  `[project].dependencies` without committing.
+* `lex-align-client status` — one-screen project + server overview
+  (pending approvals, recent CVE pressure, hook install state).
+* `lex-align-server quickstart` — Docker-free single-user bring-up:
+  materializes `~/.lexalign/` and runs the server in-process.
 
 ### Automatic enforcement
 

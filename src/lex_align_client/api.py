@@ -199,6 +199,43 @@ class LexAlignClient:
         resp.raise_for_status()
         return resp.json()
 
+    def pending_approvals(self, project: Optional[str] = None) -> list[dict]:
+        """List PENDING_REVIEW approval requests for ``project``.
+
+        Defaults to the project bound to this client. Used by
+        ``lex-align-client status`` and the SessionStart brief to surface
+        the queue without an extra trip to the dashboard.
+        """
+        params = {
+            "project": project or self.config.project,
+            "status": "PENDING_REVIEW",
+        }
+        resp = self._http.get(
+            f"{self.config.server_url}/api/v1/reports/approval-requests",
+            params=params,
+            headers=self._headers(),
+        )
+        resp.raise_for_status()
+        body = resp.json() or {}
+        return list(body.get("items") or [])
+
+    def security_report(self, project: Optional[str] = None) -> dict:
+        """Project-scoped CVE-driven denial rollup.
+
+        Used by ``status`` and the SessionStart brief to surface critical
+        CVE pressure on packages this project has been touching, so a
+        freshly-published advisory is visible the next time a session
+        starts — not at commit time.
+        """
+        params = {"project": project or self.config.project}
+        resp = self._http.get(
+            f"{self.config.server_url}/api/v1/reports/security",
+            params=params,
+            headers=self._headers(),
+        )
+        resp.raise_for_status()
+        return resp.json() or {}
+
 
 def _detail(resp: httpx.Response) -> str:
     try:

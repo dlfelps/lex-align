@@ -37,6 +37,7 @@ enforcement for Python projects, single-user by default.
 | **3.** Approval workflow UI + reporting endpoints + agent identity | :material-check-circle: shipped |
 | **4.** Pluggable org-mode auth | :material-check-circle: shipped |
 | **5.** Pluggable approval proposers + hot-reload | :material-check-circle: shipped |
+| **6.** Single-user workflow (`quickstart`, `audit`, `status`, auto-enqueue) | :material-check-circle: shipped |
 
 Approvals now flow through a pluggable *proposer*: opens a PR (GitHub
 backend), commits to a local repo (local-git), writes YAML directly
