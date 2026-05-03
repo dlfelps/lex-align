@@ -28,7 +28,7 @@ waiting to be triaged, and routes any change through the configured
 proposer so the YAML on disk stays the source of truth. For most
 installs that's the `local_file` proposer — the click writes
 `registry.yml` and the file watcher reloads. The
-[advanced PR-based flow](git-backed-approvals.md) is opt-in.
+advanced PR-based flow is opt-in.
 
 Key pieces:
 

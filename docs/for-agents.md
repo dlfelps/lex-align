@@ -8,8 +8,9 @@ description: Concise, machine-friendly playbook for AI coding agents using lex-a
 This page is the canonical playbook for AI coding agents (Claude Code,
 Cursor, Aider, etc.) operating in a `lex-align`-governed repo. It is
 intentionally terse and deterministic. If you are a human, the
-[Getting Started](getting-started.md) page is friendlier; for which of
-these instructions are auto-enforced for which agent, see
+[Single-user Quickstart](single-user-quickstart.md) is a good starting
+point; for which of these instructions are auto-enforced for which
+agent, see
 [Agent Support](agent-support.md). The pre-commit guardrail is
 universal; the edit-time intercept is Claude-Code-only.
 
