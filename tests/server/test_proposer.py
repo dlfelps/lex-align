@@ -183,27 +183,21 @@ def test_loader_picks_local_git_when_inside_working_tree(tmp_path):
 
 
 @pytest.mark.skipif(not GIT_AVAILABLE, reason="git binary not on PATH")
-def test_loader_picks_github_when_local_git_has_github_remote(tmp_path, monkeypatch):
-    """A local git repo whose origin points to GitHub, combined with a token
-    in the environment, should auto-select the GitHub proposer so approval
-    requests open PRs instead of just committing locally."""
+def test_loader_does_not_auto_escalate_to_github_from_local_git(tmp_path, monkeypatch):
+    """A local git repo whose origin points to GitHub must NOT be auto-promoted
+    to the GitHub backend just because a token is in the environment. The
+    PR-based flow is opt-in only — operators have to set REGISTRY_REPO_URL
+    explicitly. (This used to silently escalate, surprising single-team
+    operators who weren't ready for PR review.)"""
     subprocess.check_call(["git", "init", "-q", str(tmp_path)])
     subprocess.check_call([
         "git", "-C", str(tmp_path), "remote", "add", "origin",
         "https://github.com/acme/policy.git",
     ])
-    monkeypatch.setenv("GITHUB_TOKEN", "ghp_autodetected")
-    workdir = tmp_path / "workdir"
-    settings = Settings(
-        registry_path=tmp_path / "registry.yml",
-        registry_repo_workdir=workdir,
-    )
-    http = httpx.AsyncClient()
-    proposer = load_proposer(settings, http_client=http)
-    assert isinstance(proposer, GitHubProposer)
-    assert proposer.owner == "acme"
-    assert proposer.repo == "policy"
-    assert proposer.token == "ghp_autodetected"
+    monkeypatch.setenv("GITHUB_TOKEN", "ghp_present_but_ignored")
+    settings = Settings(registry_path=tmp_path / "registry.yml")
+    proposer = load_proposer(settings, http_client=None)  # type: ignore[arg-type]
+    assert isinstance(proposer, LocalGitProposer)
 
 
 @pytest.mark.skipif(not GIT_AVAILABLE, reason="git binary not on PATH")

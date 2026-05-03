@@ -4,6 +4,8 @@ Exposes:
   * `serve`              — run uvicorn against the FastAPI app.
   * `init`               — materialize the operator bundle (compose stack,
                             Dockerfile, registry, .env) into a target dir.
+  * `check-config`       — pre-flight checks for a single-team install:
+                            REGISTRY_PATH, audit DB, cache, proposer, auth.
   * `registry compile`   — compile a YAML registry to the JSON form the
                             server consumes.
   * `selftest`           — hit `/api/v1/health` to confirm a stack is up.
@@ -18,6 +20,7 @@ from pathlib import Path
 
 import click
 
+from .check_config import FAIL, OK, WARN, run_checks_sync
 from .init import MARKER_FILENAME, init_target
 from .registry_schema import ValidationError, validate_registry
 
@@ -115,6 +118,41 @@ def registry_compile(source: Path, destination: Path) -> None:
     click.echo(
         f"Compiled {len(compiled['packages'])} package rules from {source} → {destination}"
     )
+
+
+# ── check-config ─────────────────────────────────────────────────────────
+
+
+_STATUS_GLYPH = {OK: "OK ", WARN: "WRN", FAIL: "FAIL"}
+
+
+@main.command("check-config")
+def check_config() -> None:
+    """Validate the server's configuration for a single-team install.
+
+    Verifies REGISTRY_PATH, audit DB writability, cache reachability, the
+    auto-detected proposer, and auth posture. Exits non-zero if any
+    check fails. Warnings (e.g. anonymous auth on a non-loopback bind,
+    Redis unreachable) do not fail the run.
+    """
+    from .config import get_settings
+    settings = get_settings()
+    results = run_checks_sync(settings)
+
+    label_width = max((len(r.label) for r in results), default=10)
+    for r in results:
+        click.echo(f"{_STATUS_GLYPH[r.status]}  {r.label.ljust(label_width)}  {r.detail}")
+
+    fails = sum(1 for r in results if r.status == FAIL)
+    warns = sum(1 for r in results if r.status == WARN)
+    click.echo("")
+    if fails:
+        click.echo(f"{fails} failure(s), {warns} warning(s).", err=True)
+        sys.exit(1)
+    if warns:
+        click.echo(f"All checks passed with {warns} warning(s).")
+    else:
+        click.echo("All checks passed.")
 
 
 # ── selftest ──────────────────────────────────────────────────────────────

@@ -104,10 +104,10 @@ extra_javascript:
 nav:
   - Home: index.md
   - Getting Started: getting-started.md
-  - Org Mode Authentication: org-mode-auth.md
-  - Approvals & Reloads: git-backed-approvals.md
   - Dashboards: dashboards.md
+  - Org Mode Authentication: org-mode-auth.md
   - Agent Support: agent-support.md
   - For Agents: for-agents.md
   - API Reference: api.md
   - Project Status & Comparison: roadmap.md
+  - 'Advanced: PR-based approvals': git-backed-approvals.md

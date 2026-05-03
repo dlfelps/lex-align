@@ -1,4 +1,16 @@
-# Approvals: PR review, local file, or anywhere in between
+# Approvals (advanced): proposer backends and PR-based review
+
+!!! info "Most installs don't need this page"
+    The default flow is **`local_file`** — set `REGISTRY_PATH` to a
+    YAML file, run `lex-align-server check-config` to verify the
+    install, and you're done. No tokens, no PRs, no webhook.
+
+    This page is the multi-team / org-wide story: an experimental
+    GitHub PR proposer for orgs that want every registry change to
+    go through review. The PR-based path is included for completeness
+    and is **not the recommended default** — large-org adoption may
+    promote it later. If you're a single team, the
+    [Getting Started](getting-started.md) guide is the path you want.
 
 When an agent calls `lex-align-client request-approval` or an operator
 clicks **Add to registry** on the dashboard, lex-align doesn't mutate
@@ -39,7 +51,7 @@ file, no fork required.
 *registry write target* you've configured:
 
 ```
-1. REGISTRY_REPO_URL set                 → github
+1. REGISTRY_REPO_URL set explicitly      → github (opt-in only)
 2. REGISTRY_PATH inside a git working    → local_git
    tree (auto-detected via `git -C`)
 3. REGISTRY_PATH writable                → local_file
@@ -49,6 +61,13 @@ file, no fork required.
 The single-user developer running `lex-align-server init && docker
 compose up` gets `local_file` for free — clicking Approve writes the
 YAML, the watcher reloads. No GitHub credentials, no PR setup.
+
+!!! note "github is opt-in only"
+    Earlier versions auto-promoted a local git tree to the github
+    backend if a GitHub remote and `GITHUB_TOKEN` were both present.
+    That surprised single-team operators who weren't ready for PR-based
+    review. The github backend is now selected only when you set
+    `REGISTRY_REPO_URL` yourself.
 
 ---
 
