@@ -4,11 +4,15 @@ Called once from the FastAPI lifespan. The result is stored on
 ``app.state.lex.proposer`` and reused for every approval request and
 every dashboard "Approve" click.
 
-Auto-detection lets most operators leave ``REGISTRY_PROPOSER`` unset:
+Auto-detection biases towards the single-team / local-file experience.
+``REGISTRY_PROPOSER`` only needs to be set when overriding the default:
 
-  1. ``REGISTRY_REPO_URL`` set                   → ``github`` (the only
-                                                    remote backend
-                                                    implemented today).
+  1. ``REGISTRY_REPO_URL`` set explicitly        → ``github`` (the
+                                                    PR-based backend; opt-
+                                                    in only — never auto-
+                                                    selected from the
+                                                    presence of a GitHub
+                                                    remote alone).
   2. ``REGISTRY_PATH`` is inside a git working   → ``local_git``.
      tree.
   3. ``REGISTRY_PATH`` set, parent dir writable  → ``local_file``.
@@ -121,6 +125,11 @@ def load_proposer(
 
 
 def _autodetect(settings: "Settings") -> str:
+    # The github backend is opt-in only — historically we'd silently
+    # promote a local_git tree to github when a GitHub remote and a token
+    # were both present, but that surprised single-team operators who
+    # weren't ready for PR-based review. Now: github is selected only when
+    # the operator sets REGISTRY_REPO_URL explicitly.
     if settings.registry_repo_url:
         return "github"
     path = settings.registry_path
@@ -129,14 +138,6 @@ def _autodetect(settings: "Settings") -> str:
         # We don't need the path to exist yet — only its parent must.
         candidate = path if path.exists() else path.parent
         if candidate.exists() and _is_git_working_tree(candidate):
-            # If the repo has a GitHub remote and credentials are available,
-            # prefer the GitHub proposer so approval requests open real PRs.
-            if _detect_github_remote(candidate) and _get_github_token(settings):
-                logger.info(
-                    "registry proposer: detected GitHub remote with credentials; "
-                    "using github backend for PR-based review."
-                )
-                return "github"
             return "local_git"
         if candidate.exists() and _is_writable(candidate if candidate.is_dir() else candidate.parent):
             return "local_file"

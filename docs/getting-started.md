@@ -1,9 +1,15 @@
 # Getting Started
 
-This guide walks through bringing up a single-user `lex-align`
+This guide walks through bringing up a single-team `lex-align`
 deployment and wiring a project into it. Both halves install from
 PyPI as a single `lex-align` distribution — there is nothing to clone
 and no extras to remember.
+
+The default flow uses the `local_file` proposer: the server reads and
+writes a single `registry.yml` on disk, and that file is the source of
+truth. No tokens, no PR review, no webhooks. PR-based review is
+[available for org-wide installs](git-backed-approvals.md) but not the
+recommended starting point.
 
 ## 1. Bring up the server
 
@@ -18,6 +24,7 @@ lex-align-server init                              # writes ./lexalign/
 cd lexalign
 $EDITOR registry.yml                               # tune package policies (optional)
 lex-align-server registry compile registry.yml registry.json
+lex-align-server check-config                      # pre-flight: paths, cache, proposer
 docker compose up -d
 lex-align-server selftest                          # GETs /api/v1/health
 ```
@@ -26,6 +33,33 @@ The server binds to `127.0.0.1:8765` and Redis is internal to the
 compose network. Single-user mode (`AUTH_ENABLED=false`) is the
 default; edit `.env` (copied from `.env.example`) to flip to
 organization mode.
+
+!!! tip "`registry.yml` is durable across restarts"
+    The `local_file` proposer writes atomically (temp-file + rename),
+    so a server crash mid-write can never produce a corrupt YAML. On
+    restart the server reads the same file from disk, picking up the
+    most recent state with no in-memory drift.
+
+### `lex-align-server check-config`
+
+Before the first `docker compose up -d`, run `check-config` to
+verify the install. It prints a one-line status for each of the
+moving pieces a single-team install needs:
+
+```
+OK   REGISTRY_PATH   ./registry.yml exists (1842 bytes).
+OK   registry YAML   ./registry.yml validates (12 package rules).
+OK   audit DB        /var/lib/lexalign/lexalign.sqlite exists and is writable.
+WRN  cache (redis)   unreachable at redis://localhost:6379/0; server will run without cache (license/CVE lookups hit upstream every time).
+OK   proposer        local_file (auto-detected) — recommended for single-team installs.
+OK   auth            disabled (anonymous), bound to 127.0.0.1 — fine for single-user / local evaluation.
+```
+
+Exit code is non-zero only on hard failures (missing
+`REGISTRY_PATH`, an unparseable YAML, an unwritable audit
+directory). Warnings — Redis unreachable, log-only fallback,
+anonymous auth on a non-loopback bind — are surfaced for visibility
+but don't block the run.
 
 !!! warning "One-shot command"
     `lex-align-server init` is meant to be run **once** per server

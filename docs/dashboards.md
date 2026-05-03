@@ -25,8 +25,10 @@ Every page accepts a `?project=…` filter scoped to the
 
 The interactive page. It loads the live registry, surfaces what's
 waiting to be triaged, and routes any change through the configured
-[proposer](git-backed-approvals.md) so the YAML in your registry repo
-stays the source of truth.
+proposer so the YAML on disk stays the source of truth. For most
+installs that's the `local_file` proposer — the click writes
+`registry.yml` and the file watcher reloads. The
+[advanced PR-based flow](git-backed-approvals.md) is opt-in.
 
 Key pieces:
 
@@ -37,8 +39,9 @@ Key pieces:
   (`provisional-no-rationale`, `repeatedly-denied`, `pre-screened`).
 - **Global policies editor** — CVSS threshold, auto-approve / hard-ban
   license lists, unknown-license policy.
-- **Add to registry…** — opens the proposer flow (PR for `github`,
-  commit for `local-git`, direct write for `local-file`).
+- **Add to registry…** — opens the proposer flow (direct write for
+  `local_file`, commit for `local_git`, PR for the opt-in `github`
+  backend).
 - **Export YAML** — last-resort manual save. Useful when running with
   `log_only`.
 
