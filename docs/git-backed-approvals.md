@@ -23,10 +23,37 @@ This page explains the four built-in backends, the auto-detection rules
 that pick one for you, the merge → reload flow, and the "implicit
 candidates" panel on the dashboard.
 
-<!-- TODO: image — overview diagram showing
-agent → server → proposer → (github | local-file | local-git | log-only)
-→ registry.yml → reload → server -->
-*[image placeholder: end-to-end approval flow diagram]*
+```mermaid
+graph LR
+    A["Agent<br/>(check/request-approval)"]
+    S["lex-align-server"]
+    P["Proposer Backend"]
+    GH["GitHub<br/>(opt-in)"]
+    LF["local_file"]
+    LG["local_git"]
+    LO["log_only"]
+    R["registry.yml"]
+    REL["Reload Engine"]
+    S2["lex-align-server<br/>(updated registry)"]
+
+    A -->|request-approval| S
+    S -->|dispatch proposal| P
+    P -->|branch/PR| GH
+    P -->|write YAML| LF
+    P -->|commit + write| LG
+    P -->|log only| LO
+    GH -->|merge PR| R
+    LF -->|atomic write| R
+    LG -->|git + file| R
+    R -->|webhook/watcher| REL
+    REL -->|reload & swap| S2
+    S2 -->|next check| A
+
+    style S fill:#e1f5ff
+    style S2 fill:#c8e6c9
+    style R fill:#fff9c4
+    style P fill:#f3e5f5
+```
 
 ---
 

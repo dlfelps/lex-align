@@ -124,10 +124,33 @@ in Phase 3 is gone — every change now has a single source of truth in
 `registry.yml`, with a reload trigger pulling the new state into
 memory.
 
-<!-- TODO: image — animated GIF or screenshot of the approval flow:
-agent runs check → request-approval → PR opens → reviewer merges →
-server hot-reloads → next check sees the new rule -->
-*[image placeholder: approval-flow screenshot or GIF]*
+```mermaid
+sequenceDiagram
+    participant Agent
+    participant CLI as lex-align-client
+    participant Server as lex-align-server
+    participant Proposer
+    participant Repo as registry.yml
+    participant ReviewDash as Reviewer<br/>(dashboard)
+
+    Agent->>CLI: request-approval<br/>(package, rationale)
+    CLI->>Server: POST /approval-requests
+    Server->>Proposer: propose(rule)
+    alt GitHub backend
+        Proposer->>Repo: branch, commit, push
+        Proposer->>Repo: open PR
+    else Local backends
+        Proposer->>Repo: write/commit to YAML
+    end
+    ReviewDash->>ReviewDash: review pending<br/>request
+    ReviewDash->>Server: POST /registry/proposals<br/>(approve/modify)
+    ReviewDash->>Repo: merge PR / file saved
+    Server->>Server: hot reload:<br/>recompile schema
+    Server->>Server: atomic registry swap
+    Agent->>CLI: check --package
+    CLI->>Server: POST /evaluate
+    Server-->>CLI: ALLOWED<br/>(package in registry)
+```
 
 ---
 
