@@ -8,6 +8,8 @@ from pathlib import Path
 
 import click
 
+from . import audit as audit_module
+from . import status as status_module
 from .api import LexAlignClient, ServerError, ServerUnreachable
 from .claude_hooks import run_hook
 from .claudemd import install_claude_md
@@ -91,6 +93,7 @@ def init(
         server_url=server_url,
         mode=mode,
         fail_open=(mode == "single-user"),
+        auto_request_approval=(mode == "single-user"),
     )
     path = save_config(project_root, config)
     click.echo(f"Wrote {path}")
@@ -202,6 +205,56 @@ def request_approval(
     except ServerError as exc:
         raise click.ClickException(f"Server error: {exc}")
     click.echo(json.dumps(response, indent=2))
+
+
+# ── audit ─────────────────────────────────────────────────────────────────
+
+
+@main.command()
+@click.option("--json", "as_json", is_flag=True, help="Emit machine-readable JSON.")
+@click.option(
+    "--agent-model",
+    default=None,
+    help="Override agent model tag (default: $LEXALIGN_AGENT_MODEL).",
+)
+@click.option(
+    "--agent-version",
+    default=None,
+    help="Override agent version tag (default: $LEXALIGN_AGENT_VERSION).",
+)
+def audit(
+    as_json: bool, agent_model: str | None, agent_version: str | None
+) -> None:
+    """Re-evaluate every runtime dep in `pyproject.toml` against the server.
+
+    Read-only sibling of the pre-commit hook: useful when adopting
+    `lex-align` on an existing project, or to check policy without
+    needing to stage and commit. Exits 2 if any dep is DENIED.
+    """
+    project_root = find_project_root()
+    config = _require_config(project_root)
+    sys.exit(
+        audit_module.run(
+            project_root, config, as_json=as_json,
+            agent_model=agent_model, agent_version=agent_version,
+        )
+    )
+
+
+# ── status ────────────────────────────────────────────────────────────────
+
+
+@main.command()
+@click.option("--json", "as_json", is_flag=True, help="Emit machine-readable JSON.")
+def status(as_json: bool) -> None:
+    """One-screen status: server reachability, hooks, pending approvals, denials."""
+    project_root = find_project_root()
+    config = _require_config(project_root)
+    report = status_module.collect(project_root, config)
+    if as_json:
+        click.echo(json.dumps(report.to_dict(), indent=2))
+    else:
+        click.echo(status_module.format_report(report))
 
 
 # ── precommit (entry point for the git hook) ──────────────────────────────

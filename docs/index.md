@@ -56,7 +56,14 @@ same server and get the same answer.
 
 ---
 
+[Single-user Quickstart →](single-user-quickstart.md) ·
 [Getting Started →](getting-started.md) ·
 [For Agents →](for-agents.md) ·
 [API Reference →](api.md) ·
 [Project Status & Comparison →](roadmap.md)
+
+!!! tip "Solo developer? Skip the Docker stack."
+    [Single-user Quickstart](single-user-quickstart.md) brings up
+    `lex-align` in two commands and no infrastructure. The full
+    [Getting Started](getting-started.md) path is for team
+    deployments.

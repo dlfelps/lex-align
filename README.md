@@ -50,6 +50,26 @@ mode is the default.
 
 ## Quickstart
 
+**Single-user / evaluation (no Docker):**
+
+```bash
+pip install lex-align
+lex-align-server quickstart        # ~/.lexalign + in-process server on :8765
+
+# in another terminal, per-project
+cd /path/to/your/project
+lex-align-client init --yes
+lex-align-client audit             # vet existing pyproject.toml deps
+lex-align-client status            # one-screen overview
+```
+
+In single-user mode the `PreToolUse` hook auto-enqueues approval requests
+when it sees `PROVISIONALLY_ALLOWED`, so the user-as-reviewer flow stays
+a single tool call. See the
+[Single-user Quickstart](https://dlfelps.github.io/lex-align/single-user-quickstart/).
+
+**Team deployment (Docker Compose):**
+
 ```bash
 # Server (host you control)
 pip install lex-align
@@ -89,6 +109,7 @@ a governed repo are backstopped by the pre-commit hook. Full matrix:
 | **3.** Approval workflow UI + reporting endpoints + agent identity | ✅ shipped |
 | **4.** Pluggable org-mode auth | ✅ shipped |
 | **5.** Pluggable approval proposers (local-file, local-git, GitHub PR) + hot-reload | ✅ shipped |
+| **6.** Single-user workflow (`quickstart`, `audit`, `status`, auto-enqueue) | ✅ shipped |
 
 Every registry change now flows through a *proposer*: opens a PR
 (GitHub), commits to a local repo (local-git), writes the YAML

@@ -28,9 +28,24 @@ The verdict will be one of:
 * `PROVISIONALLY_ALLOWED` — proceed, then run
   `lex-align-client request-approval --package <name> --rationale "<why>"`
   to enqueue formal addition to the registry. Do not wait for review.
+  In **single-user mode** the Claude `PreToolUse` hook does this for you
+  automatically (config flag `auto_request_approval`, defaulting to
+  `true`); call `request-approval` manually only if you are outside
+  Claude Code or the auto-enqueue surfaced a failure.
 * `DENIED` — do not add the package. The `reason` field explains whether
   it was the registry, a critical CVE, or the license. If a `replacement`
   is provided, prefer it.
+
+### Other useful commands
+
+* `lex-align-client audit` — re-evaluate every dep currently in
+  `[project].dependencies` against the server. Read-only sibling of the
+  pre-commit hook; exits non-zero on `DENIED`. Use this to vet a
+  project on adoption or before sending a PR.
+* `lex-align-client status` — one-screen overview: server reachability,
+  pending approvals queued for this project, recent CVE-driven
+  denials, and which hooks are wired. Pass `--json` for machine
+  consumption.
 
 ### Automatic enforcement
 

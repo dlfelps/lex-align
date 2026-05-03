@@ -117,10 +117,37 @@ def handle_session_start(event: dict, project_root: Path, config: ClientConfig) 
             config, agent_model=model, agent_version=version
         ) as client:
             health = client.health()
-        lines.append(
-            f"Health: redis={health.get('redis')} db={health.get('db')} "
-            f"registry={'loaded' if health.get('registry_loaded') else 'absent'}"
-        )
+            lines.append(
+                f"Health: redis={health.get('redis')} db={health.get('db')} "
+                f"registry={'loaded' if health.get('registry_loaded') else 'absent'}"
+            )
+            # The next two pulls are best-effort: if the reports endpoints
+            # error we still want the brief to render. The pre-commit and
+            # PreToolUse hooks remain the enforcement points; this section
+            # is purely informational.
+            try:
+                pending = client.pending_approvals()
+                if pending:
+                    pkgs = sorted({r.get("package") for r in pending if r.get("package")})
+                    preview = ", ".join(pkgs[:5])
+                    extra = f" (+{len(pkgs) - 5} more)" if len(pkgs) > 5 else ""
+                    lines.append(f"Pending approvals: {len(pending)} — {preview}{extra}")
+                else:
+                    lines.append("Pending approvals: 0")
+            except Exception as exc:  # noqa: BLE001 — informational only
+                lines.append(f"Pending approvals: unavailable ({exc.__class__.__name__})")
+            try:
+                sec = client.security_report()
+                sev = (sec or {}).get("severity_distribution") or {}
+                crit = sev.get("critical", 0)
+                high = sev.get("high", 0)
+                if crit or high:
+                    lines.append(
+                        f"CVE pressure: critical={crit} high={high} — "
+                        "review with `lex-align-client status`."
+                    )
+            except Exception:  # noqa: BLE001 — informational only
+                pass
     except Exception as exc:
         lines.append(f"Health: unreachable ({exc.__class__.__name__})")
     lines += [
@@ -180,13 +207,22 @@ def handle_pre_tool_use(
             config, agent_model=model, agent_version=version
         ) as client:
             for name, spec in sorted(added.items()):
-                version = extract_pinned_version(spec)
-                v = client.check(name, version)
+                pinned = extract_pinned_version(spec)
+                v = client.check(name, pinned)
                 if v.denied:
                     blocks.append(_format_verdict(v, spec))
                 elif v.verdict == "PROVISIONALLY_ALLOWED":
-                    suffix = " (run `lex-align-client request-approval` after this lands)" if v.is_requestable else ""
-                    notes.append(f"  ◎ {name} — provisional: {v.reason}{suffix}")
+                    auto_note = ""
+                    if config.auto_request_approval and v.is_requestable:
+                        rationale = _auto_rationale(spec, v)
+                        try:
+                            client.request_approval(name, rationale)
+                            auto_note = " (auto-enqueued for review)"
+                        except (ServerUnreachable, ServerError) as exc:
+                            auto_note = f" (auto-enqueue failed: {exc.__class__.__name__})"
+                    elif v.is_requestable:
+                        auto_note = " (run `lex-align-client request-approval` after this lands)"
+                    notes.append(f"  ◎ {name} — provisional: {v.reason}{auto_note}")
                 elif v.needs_rationale:
                     notes.append(
                         f"  • {name} — allowed, but registry-approved (neutral); "
@@ -206,6 +242,25 @@ def handle_pre_tool_use(
     if notes:
         return ("allow", "\n".join(header + [""] + notes))
     return ("allow", "\n".join(header))
+
+
+def _auto_rationale(spec: str, v: Verdict) -> str:
+    """Compose the rationale used when single-user mode auto-enqueues a
+    PROVISIONALLY_ALLOWED dependency for formal review.
+
+    Kept short and factual — the user is the reviewer in this flow, so a
+    long synthesized argument adds noise. The rationale records the spec
+    that triggered the verdict and the gates that already passed.
+    """
+    parts = [
+        f"Auto-enqueued from Claude Code edit: added `{spec}`.",
+        "Package passed CVE and license gates but is not yet in the registry.",
+    ]
+    if v.license:
+        parts.append(f"License: {v.license}.")
+    if v.resolved_version:
+        parts.append(f"Resolved version: {v.resolved_version}.")
+    return " ".join(parts)
 
 
 def _format_verdict(v: Verdict, spec: str) -> str:

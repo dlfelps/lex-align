@@ -7,6 +7,9 @@ Schema:
   mode       = "single-user"      # or "org"
   fail_open  = true               # ignored unless server is unreachable
   api_key_env_var = "LEXALIGN_API_KEY"  # only used when mode = "org"
+  auto_request_approval = true    # PROVISIONALLY_ALLOWED → enqueue review
+                                  # automatically. Defaults to true in
+                                  # single-user mode, false in org mode.
 """
 
 from __future__ import annotations
@@ -29,6 +32,11 @@ class ClientConfig:
     mode: str = "single-user"
     fail_open: bool = True
     api_key_env_var: str = "LEXALIGN_API_KEY"
+    # When the PreToolUse hook sees a PROVISIONALLY_ALLOWED verdict it
+    # auto-fires `request-approval` so the user-as-reviewer flow doesn't
+    # require a second manual command. Off by default in org mode where
+    # the rationale should be reviewer-authored, not auto-generated.
+    auto_request_approval: bool = True
 
     def to_dict(self) -> dict:
         return {
@@ -37,16 +45,21 @@ class ClientConfig:
             "mode": self.mode,
             "fail_open": self.fail_open,
             "api_key_env_var": self.api_key_env_var,
+            "auto_request_approval": self.auto_request_approval,
         }
 
     @classmethod
     def from_dict(cls, d: dict) -> "ClientConfig":
+        mode = str(d.get("mode", "single-user"))
+        # Org mode defaults to manual approval; single-user defaults to auto.
+        auto_default = mode != "org"
         return cls(
             project=str(d["project"]),
             server_url=str(d.get("server_url", "http://127.0.0.1:8765")),
-            mode=str(d.get("mode", "single-user")),
+            mode=mode,
             fail_open=bool(d.get("fail_open", True)),
             api_key_env_var=str(d.get("api_key_env_var", "LEXALIGN_API_KEY")),
+            auto_request_approval=bool(d.get("auto_request_approval", auto_default)),
         )
 
 

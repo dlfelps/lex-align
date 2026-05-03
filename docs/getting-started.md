@@ -5,6 +5,12 @@ deployment and wiring a project into it. Both halves install from
 PyPI as a single `lex-align` distribution — there is nothing to clone
 and no extras to remember.
 
+!!! tip "Working solo? Use the Docker-free shortcut."
+    [Single-user Quickstart](single-user-quickstart.md) replaces
+    sections 1 and 2 below with a single `lex-align-server quickstart`
+    command. The rest of this guide (project init, verdicts,
+    dashboards) still applies.
+
 The default flow uses the `local_file` proposer: the server reads and
 writes a single `registry.yml` on disk, and that file is the source of
 truth. No tokens, no PR review, no webhooks. PR-based review is
@@ -137,6 +143,8 @@ Flags worth knowing:
 | Action | Command |
 |---|---|
 | Plan-time advice | `lex-align-client check --package httpx` |
+| Vet the whole project | `lex-align-client audit` |
+| One-screen overview | `lex-align-client status` |
 | Async approval | `lex-align-client request-approval --package httpx --rationale "standard async client"` |
 | Pre-commit guardrail | runs automatically on every `git commit` |
 | Claude Code hook | intercepts every edit to `pyproject.toml` |
@@ -145,6 +153,33 @@ Flags worth knowing:
 Both hooks enforce against `[project].dependencies` only. Changes to
 `[dependency-groups]` and `[project.optional-dependencies]` are not
 checked — by design, since dev tooling does not ship to production.
+
+### `audit` and `status`
+
+`audit` re-evaluates every dep currently in `[project].dependencies`
+without needing a commit — useful when adopting `lex-align` on an
+existing repo or before sending a PR. It exits non-zero if any verdict
+is `DENIED`, and supports `--json` for CI-friendly output.
+
+`status` is the at-a-glance dashboard for the terminal: server
+reachability, runtime dep count, pending approvals queued for this
+project, recent CVE-driven denials, and which hooks are wired up. Pass
+`--json` if you want to consume it from a script.
+
+### Auto-enqueue on `PROVISIONALLY_ALLOWED`
+
+In single-user mode (`init --mode single-user`, the default) the
+`PreToolUse` hook auto-fires `request-approval` whenever it sees a
+`PROVISIONALLY_ALLOWED` verdict, with a generated rationale that
+records the spec and license. The user-as-reviewer flow then becomes:
+the agent edits, the YAML proposal lands in `registry.yml` (or a PR if
+you've configured the GitHub proposer), you flip `approved` to
+`preferred` if you want, and the next check sees the new rule.
+
+Set `auto_request_approval = false` in `.lexalign.toml` to revert to
+the old advisory note. Org mode (`init --mode org`) defaults to off,
+on the principle that org-mode rationales should be reviewer-authored,
+not auto-generated.
 
 ### Agent identity
 

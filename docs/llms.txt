@@ -22,7 +22,8 @@ moving while `request-approval` enqueues formal review asynchronously
 ## Core docs
 
 - [Home](index.md): Overview, architecture, quick links.
-- [Getting Started](getting-started.md): Bring up the server, install the client, init a project.
+- [Single-user Quickstart](single-user-quickstart.md): Two-command bring-up for a solo developer; no Docker, no Redis, audit DB on disk. Recommended path for evaluation and personal projects.
+- [Getting Started](getting-started.md): Bring up the server (Docker Compose), install the client, init a project. The team-deployment path.
 - [Org Mode Authentication](org-mode-auth.md): Pluggable auth backends (`header`, `webhook`, custom Python) for multi-user deployments.
 - [Agent Support](agent-support.md): Which features work for which agents (Claude Code, Cursor, Aider). Claude Code is first-class; the pre-commit guardrail is universal.
 - [API Reference](api.md): Auto-generated docstrings for `lex_align_client` and `lex_align_server`, sourced via mkdocstrings from `src/`.

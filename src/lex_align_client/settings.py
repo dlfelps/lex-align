@@ -141,6 +141,17 @@ def _precommit_path(project_root: Path) -> Path:
     return project_root / ".git" / "hooks" / "pre-commit"
 
 
+def precommit_installed(project_root: Path) -> bool:
+    """True iff the git pre-commit hook contains the lex-align marker."""
+    hook_path = _precommit_path(project_root)
+    if not hook_path.exists():
+        return False
+    try:
+        return _PRECOMMIT_MARKER in hook_path.read_text()
+    except OSError:
+        return False
+
+
 def install_precommit(project_root: Path) -> Path | None:
     """Install or augment `.git/hooks/pre-commit`. Returns the path if written."""
     git_dir = project_root / ".git"

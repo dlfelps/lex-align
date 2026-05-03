@@ -64,6 +64,40 @@ Required: `--package` and `--rationale`. Submit it **immediately
 after** acting on a `PROVISIONALLY_ALLOWED` verdict — do not wait for
 human review before continuing.
 
+In **single-user mode** the Claude `PreToolUse` hook auto-enqueues this
+for you whenever it sees a `PROVISIONALLY_ALLOWED` verdict (config flag
+`auto_request_approval`, defaults to `true`). Call `request-approval`
+manually only when:
+
+* you are running outside Claude Code (eg. shell, Cursor, Aider), or
+* the hook surfaced an `auto-enqueue failed` note in its message — the
+  verdict landed but the proposer call did not.
+
+### `audit` — vet the whole project
+
+```bash
+lex-align-client audit [--json]
+```
+
+Read-only sibling of the pre-commit hook: re-evaluates every dep in
+`[project].dependencies`. Exits non-zero on `DENIED`. Use this when:
+
+* you've just landed in an existing repo and want to see what's
+  out of policy without committing,
+* the user asks "is this project clean?" and you'd otherwise have to
+  call `check` once per dep.
+
+### `status` — one-screen overview
+
+```bash
+lex-align-client status [--json]
+```
+
+Server reachability, pending approvals queued for this project, recent
+CVE-driven denials, and which hooks are wired. Read-only; never
+modifies the project. Useful before you start a session to see whether
+the user has unreviewed approval requests sitting on the dashboard.
+
 ### `init` — one-shot
 
 ```bash
