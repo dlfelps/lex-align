@@ -124,6 +124,7 @@ report with:
 | `top_packages` | Packages with the most CVE-driven denials, carrying their highest-seen CVSS and up to five CVE ids. |
 | `top_cves` | The CVE identifiers showing up most often. |
 | `hot_registry_packages` | Registry-allowed packages whose audit rows in the last 30 days include a CVE-driven denial or provisional. |
+| `cve_alerts` | Most recent `CVE_ALERT` rows written by the [background re-scan scheduler](#background-cve-re-scan). One per (package, scan tick) where the registered package's max CVSS now crosses the configured threshold. |
 
 Page sections:
 
@@ -149,10 +150,37 @@ packages" panel populated and a critical-severity KPI lit up -->
 the top, the red "already-approved packages" panel below, and the
 top-packages and top-CVEs tables underneath]*
 
+### Background CVE re-scan
+
+The dashboard's "hot packages" panel reacts to `/evaluate` traffic — a
+package only surfaces there if someone has actually checked it
+recently. To catch the case where a critical CVE drops on an
+already-approved package that *nobody is currently checking*, the
+server runs an asyncio scheduler in-process that walks every package
+in the live registry on a fixed cadence and re-queries OSV.
+
+* Cadence is set by `LEXALIGN_CVE_SCAN_INTERVAL_HOURS` (default `24`,
+  `0` disables the scheduler entirely).
+* For each registered package whose max CVSS now crosses
+  `global_policies.cve_threshold`, the scanner writes a `CVE_ALERT`
+  row to the audit log with the package name, CVE ids, max CVSS, and
+  current registry status.
+* The scanner is **alert-only**. It never auto-flips a package to
+  `banned` or otherwise mutates the registry — the policy decision
+  stays with the operator, so green builds don't break overnight.
+* Alerts surface as the `cve_alerts` field of `/api/v1/reports/security`
+  (and therefore in the security dashboard) and in the
+  `lex-align-client status` summary, with no other endpoint changes.
+
+The scheduler shares OSV's response cache with the on-demand
+`/evaluate` path, so a scan tick warms the cache for everyone else.
+With the default 24h cadence and 6h cache TTL, every alert is at most
+a scan-cycle behind the OSV publish.
+
 ### Acting on a "hot" registry package
 
 When something appears in **already-approved packages with new CVE
-activity**:
+activity** (or as a `CVE_ALERT` from the background scanner):
 
 1. Check the CVE ids and the affected version range in OSV.
 2. If you're on a safe version, pin it: open the registry workshop,
