@@ -10,12 +10,14 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Optional
 
-from pydantic import Field
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="", case_sensitive=False)
+    model_config = SettingsConfigDict(
+        env_prefix="", case_sensitive=False, populate_by_name=True
+    )
 
     # Auth. ``auth_enabled`` is the master switch — when false, every request
     # is anonymous regardless of ``auth_backend``. When true, ``auth_backend``
@@ -82,6 +84,19 @@ class Settings(BaseSettings):
 
     # HTTP timeouts (seconds).
     outbound_timeout: float = 5.0
+
+    # Background CVE re-scan. The scanner walks every package in the live
+    # registry every N hours and re-queries OSV; packages whose CVSS now
+    # crosses ``GlobalPolicies.cve_threshold`` get a CVE_ALERT row in the
+    # audit log. 0 disables. Read from ``LEXALIGN_CVE_SCAN_INTERVAL_HOURS``
+    # (the prefix mirrors the rest of the lex-align env contract).
+    cve_scan_interval_hours: float = Field(
+        default=24.0,
+        validation_alias=AliasChoices(
+            "cve_scan_interval_hours",
+            "LEXALIGN_CVE_SCAN_INTERVAL_HOURS",
+        ),
+    )
 
 
 def get_settings() -> Settings:

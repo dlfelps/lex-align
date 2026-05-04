@@ -7,7 +7,7 @@ the cache, audit log, or registry got built.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 import httpx
 
@@ -19,6 +19,10 @@ from .proposer import Proposer
 from .registry import Registry
 
 
+if TYPE_CHECKING:  # pragma: no cover
+    from .cve_scanner import CveScanner
+
+
 @dataclass
 class AppState:
     settings: Settings
@@ -28,3 +32,4 @@ class AppState:
     registry: Optional[Registry]
     authenticator: Authenticator
     proposer: Proposer
+    cve_scanner: Optional["CveScanner"] = None

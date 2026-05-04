@@ -23,6 +23,7 @@ from .audit import AuditStore
 from .authn import load_authenticator
 from .cache import JsonCache
 from .config import Settings, get_settings
+from .cve_scanner import CveScanner
 from .dashboards import router as dashboards_router
 from .proposer import load_proposer
 from .registry import load_registry
@@ -68,9 +69,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
         poller = RegistryPoller(app.state.lex)
         poller.start()
+        scanner = CveScanner(app.state.lex)
+        app.state.lex.cve_scanner = scanner
+        scanner.start()
         try:
             yield
         finally:
+            await scanner.stop()
             await poller.stop()
             await proposer.close()
             await http_client.aclose()

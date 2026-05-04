@@ -27,11 +27,19 @@ import aiosqlite
 VERDICT_ALLOWED = "ALLOWED"
 VERDICT_DENIED = "DENIED"
 VERDICT_PROVISIONALLY_ALLOWED = "PROVISIONALLY_ALLOWED"
+# Background scan verdict: not a per-call decision. Recorded by the
+# periodic CveScanner when an already-approved registry package now
+# crosses the configured CVSS threshold. The operator decides what to
+# do — auto-deny would silently break green builds.
+VERDICT_CVE_ALERT = "CVE_ALERT"
 
 # Reason category — drives report grouping. Stored on every audit row.
 DENIAL_REGISTRY = "registry"
 DENIAL_LICENSE = "license"
 DENIAL_CVE = "cve"
+# Distinct from DENIAL_CVE so the existing security_report denial query
+# does not double-count alert rows as denials.
+DENIAL_CVE_ALERT = "cve_alert"
 DENIAL_NONE = ""  # ALLOW / PROVISIONALLY_ALLOWED
 
 
@@ -288,6 +296,42 @@ class AuditStore:
             await db.commit()
         return record.id
 
+    async def record_cve_alert(
+        self,
+        *,
+        package: str,
+        cve_ids: list[str],
+        max_cvss: Optional[float],
+        registry_status: Optional[str] = None,
+        project: str = "lex-align-server",
+        requester: str = "cve-scanner",
+    ) -> str:
+        """Persist a single CVE_ALERT row from the background scanner.
+
+        Reuses the audit_log table so the dashboard, exports, and the
+        client `status` command see one consistent event stream — the
+        ``denial_category=DENIAL_CVE_ALERT`` discriminator keeps these
+        out of the existing CVE-denial rollups.
+        """
+        return await self.record_evaluation(AuditRecord(
+            project=project,
+            requester=requester,
+            package=package,
+            version=None,
+            resolved_version=None,
+            verdict=VERDICT_CVE_ALERT,
+            denial_category=DENIAL_CVE_ALERT,
+            reason=(
+                f"Registered package now has CVSS {max_cvss} "
+                f"(>= configured denial threshold)."
+                if max_cvss is not None else
+                "Registered package now has CVE coverage."
+            ),
+            cve_ids=cve_ids,
+            max_cvss=max_cvss,
+            registry_status=registry_status,
+        ))
+
     async def upsert_approval_request(self, req: ApprovalRequest) -> str:
         req.id = req.id or str(uuid.uuid4())
         req.ts = req.ts or datetime.datetime.now(tz=datetime.timezone.utc)
@@ -429,7 +473,45 @@ class AuditStore:
             )
         else:
             base["hot_registry_packages"] = []
+        base["cve_alerts"] = await self.recent_cve_alerts(project)
         return base
+
+    async def recent_cve_alerts(
+        self, project: Optional[str] = None, limit: int = 100
+    ) -> list[dict]:
+        """Most recent CVE_ALERT rows written by the background scanner.
+
+        Surfaced through ``security_report`` so the dashboard and the
+        client's ``status`` command see scanner output without any
+        endpoint changes.
+        """
+        clauses = ["denial_category = ?"]
+        params: list[Any] = [DENIAL_CVE_ALERT]
+        if project:
+            clauses.append("project = ?")
+            params.append(project)
+        where = " WHERE " + " AND ".join(clauses)
+        async with aiosqlite.connect(self._db_path) as db:
+            db.row_factory = aiosqlite.Row
+            cur = await db.execute(
+                f"""SELECT id, ts, package, cve_ids, max_cvss, reason,
+                          registry_status
+                   FROM audit_log{where}
+                   ORDER BY ts DESC
+                   LIMIT ?""",
+                [*params, limit],
+            )
+            rows = [dict(r) for r in await cur.fetchall()]
+            await cur.close()
+        for row in rows:
+            if row.get("cve_ids"):
+                try:
+                    row["cve_ids"] = json.loads(row["cve_ids"])
+                except json.JSONDecodeError:
+                    row["cve_ids"] = []
+            else:
+                row["cve_ids"] = []
+        return rows
 
     async def _license_breakdown(
         self, project: Optional[str]
