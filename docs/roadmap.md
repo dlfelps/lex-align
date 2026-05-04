@@ -6,22 +6,52 @@ Most existing tools catch problems *after* a PR is open. `lex-align` is
 narrower in scope (Python only) but enforces policy *before* the bytes
 hit disk, with a closed-enum verdict that AI agents can branch on.
 
-| Feature                       | Dependabot | Snyk     | FOSSA   | lex-align   |
-|-------------------------------|:----------:|:--------:|:-------:|:-----------:|
-| CVE checking                  | ✅         | ✅       | ✅      | ✅          |
-| License compliance            | ❌         | ✅       | ✅      | ✅          |
-| Approved registry enforcement | ❌         | ❌       | ❌      | ✅          |
-| Pre-commit interception       | ❌         | ❌       | ❌      | ✅          |
-| AI agent integration          | ❌         | ❌       | ❌      | ✅          |
-| Language support              | 20+        | 10+      | 20+     | Python only |
-| Cost                          | Free       | Freemium | Paid    | Free        |
-| Self-hosted                   | ✅         | Partial  | Partial | ✅          |
+| Feature                       | Dependabot          | Snyk              | FOSSA        | lex-align   |
+|-------------------------------|:-------------------:|:-----------------:|:------------:|:-----------:|
+| CVE checking                  | ✅                  | ✅                | ✅           | ✅          |
+| License compliance            | ❌                  | ✅                | ✅           | ✅          |
+| Approved registry enforcement | ❌                  | ❌                | ❌           | ✅          |
+| Pre-commit interception       | ❌                  | ⚠️ via plugin[^1] | ❌           | ✅          |
+| AI agent integration          | ❌                  | ❌                | ❌           | ✅ [^2]     |
+| Language support              | 20+                 | 10+               | 20+          | Python only |
+| Cost                          | Free [^3]           | Freemium          | Freemium [^4]| Free        |
+| Self-hosted                   | ⚠️ GitHub Ent.[^5] | Partial           | Partial      | ✅          |
+
+[^1]: Snyk can be wired into pre-commit hooks via the
+[`pre-commit`](https://pre-commit.com) framework (community-maintained hooks
+exist) or through custom shell wrappers. It is not a first-party,
+out-of-the-box feature.
+
+[^2]: "AI agent integration" here means a structured, machine-readable verdict
+(`ALLOWED` / `PROVISIONALLY_ALLOWED` / `DENIED`) that a coding agent can branch
+on, plus first-party Claude Code `PreToolUse` hooks that intercept edits to
+`pyproject.toml` before bytes hit disk. Other tools have IDE plugins or Copilot
+integrations, but none expose a closed-enum policy verdict designed for
+programmatic agent consumption.
+
+[^3]: Dependabot is free *within GitHub* (github.com or GitHub Enterprise
+Server). It has no standalone deployment path — if you are not hosting on
+GitHub, it is not available at any price.
+
+[^4]: FOSSA offers a free tier for open-source projects; paid plans are
+required for private repositories beyond the free allowance.
+
+[^5]: Dependabot runs inside GitHub's infrastructure. "Self-hosted" is only
+possible via GitHub Enterprise Server, a paid enterprise product. It cannot
+be deployed independently of GitHub.
 
 The middle rows — approved-registry enforcement, pre-commit
 interception, and AI-agent integration — are where `lex-align`
 differs in kind, not just degree: an approved-registry gate, an
 edit-time `PreToolUse` intercept, and an auto-written `CLAUDE.md` so
 agents pre-flight every dep without being asked.
+
+**Language support is a real limitation.** `lex-align` is Python-only.
+Organisations running polyglot stacks (Node, Go, Java, Rust, …) will
+need a separate tool — or multiple tools — for those ecosystems.
+Dependabot and FOSSA cover 20+ package managers out of the box; Snyk
+covers 10+. If your codebase is mixed-language, treat the language-support
+row as the deciding factor before evaluating anything else.
 
 ---
 
