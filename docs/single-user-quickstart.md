@@ -125,6 +125,24 @@ Edit it, then either restart the server (Ctrl-C and re-run
 interval defaults to 5 minutes and is configurable via
 `REGISTRY_RELOAD_INTERVAL`.
 
+## 6. Background CVE re-scan
+
+In addition to the per-`/evaluate` CVE check, the server runs an
+in-process asyncio scheduler that walks every package in the live
+registry on a fixed cadence and re-queries OSV. Anything whose max
+CVSS now crosses `global_policies.cve_threshold` gets a `CVE_ALERT`
+row in the audit log — the alert surfaces in the security dashboard
+and in `lex-align-client status` automatically.
+
+| Env var | Default | Behaviour |
+| --- | --- | --- |
+| `LEXALIGN_CVE_SCAN_INTERVAL_HOURS` | `24` | Cadence between scans, in hours. `0` disables the scheduler. |
+
+The scanner is alert-only: it never auto-flips an approved package to
+`banned`. Treat a `CVE_ALERT` the same as the
+[hot-package triage steps in the security dashboard](dashboards.md#acting-on-a-hot-registry-package)
+— pin to a safe version, ban with a `reason`, or replace.
+
 ## When you need more
 
 The quickstart binds `127.0.0.1` and runs without authentication. If
