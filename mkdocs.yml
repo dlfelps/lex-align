@@ -1,7 +1,5 @@
 site_name: lex-align
-site_description: >-
-  Enterprise governance platform for AI-generated code — legal, security,
-  and architectural alignment.
+site_description: Local dependency guardrails for AI coding agents.
 site_author: lex-align maintainers
 site_url: https://dlfelps.github.io/lex-align/
 
