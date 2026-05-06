@@ -209,13 +209,13 @@ async def evaluate(
         # Unknown but license-passing → provisionally allowed.
         if lic_verdict.needs_human_review:
             prov_reason = (
-                "Not yet in the enterprise registry. License could not be "
+                "Not yet in your approved registry. License could not be "
                 "determined; provisionally allowed pending human review. "
                 "An approval request will be automatically submitted."
             )
         else:
             prov_reason = (
-                "Not yet in the enterprise registry. License "
+                "Not yet in your approved registry. License "
                 f"{license_info.license_normalized} is on the auto-approve list "
                 "and no critical CVEs are reported. Run `lex-align-client "
                 "request-approval` to formalize."
@@ -259,7 +259,7 @@ async def evaluate(
     result = EvaluationResult(
         verdict=VERDICT_ALLOWED,
         reason=pkg_verdict.reason or (
-            f"Allowed by enterprise registry ({pkg_verdict.status.value if pkg_verdict.status else 'allow'})."
+            f"Allowed by local registry ({pkg_verdict.status.value if pkg_verdict.status else 'allow'})."
         ),
         package=package,
         version=version,
