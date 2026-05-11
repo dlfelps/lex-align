@@ -17,12 +17,18 @@ import redis.asyncio as redis
 logger = logging.getLogger(__name__)
 
 
+_DISABLED_URLS = frozenset({"", "none", "disabled"})
+
+
 class JsonCache:
     def __init__(self, url: str):
         self._url = url
+        self._disabled = url.lower() in _DISABLED_URLS
         self._client: Optional[redis.Redis] = None
 
     async def _conn(self) -> Optional[redis.Redis]:
+        if self._disabled:
+            return None
         if self._client is None:
             try:
                 self._client = redis.from_url(self._url, decode_responses=True)
