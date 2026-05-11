@@ -13,8 +13,20 @@
   "workspaceMount": "source=${localWorkspaceFolder},target=/workspaces/lex-align,type=bind,consistency=cached",
   "workspaceFolder": "/workspaces/lex-align",
 
-  // Install Claude Code after the container is created
-  "postCreateCommand": "npm install -g @anthropic-ai/claude-code && mkdir -p ~/.claude && cp -r /tmp/claude-host/. ~/.claude/ && chmod 700 ~/.claude && chmod 600 ~/.claude/.credentials.json 2>/dev/null || true && cp /tmp/claude-host.json ~/.claude.json && chmod 600 ~/.claude.json",
+  // 1. Install uv + project deps, materialize the quickstart bundle, install Claude Code
+  "postCreateCommand": "pip install uv && uv sync && uv run lex-align-server quickstart --no-serve && npm install -g @anthropic-ai/claude-code && mkdir -p ~/.claude && cp -r /tmp/claude-host/. ~/.claude/ && chmod 700 ~/.claude && chmod 600 ~/.claude/.credentials.json 2>/dev/null || true && cp /tmp/claude-host.json ~/.claude.json && chmod 600 ~/.claude.json",
+
+  // 2. On every container start, boot the server in the background on :8765
+  "postStartCommand": "uv run lex-align-server quickstart > /tmp/lex-align-server.log 2>&1 &",
+
+  // Forward the server port so it is reachable from the host
+  "forwardPorts": [8765],
+  "portsAttributes": {
+    "8765": {
+      "label": "lex-align server",
+      "onAutoForward": "silent"
+    }
+  },
 
   "mounts": [
     // Claude credentials — mount read-only to temp path; postCreateCommand copies with correct ownership
@@ -38,7 +50,7 @@
         "ms-python.debugpy"
       ],
       "settings": {
-        "python.defaultInterpreterPath": "/usr/local/bin/python",
+        "python.defaultInterpreterPath": "/workspaces/lex-align/.venv/bin/python",
         "terminal.integrated.defaultProfile.linux": "bash"
       }
     }
