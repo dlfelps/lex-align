@@ -47,7 +47,7 @@ def test_apply_env_returns_overrides(tmp_path: Path):
     target = tmp_path / "lexalign"
     result = quickstart.materialize(target)
     env = quickstart.apply_env(result)
-    assert env["REGISTRY_PATH"] == str(result.registry_yml)
+    assert env["REGISTRY_PATH"] == str(result.registry_json)
     assert env["DATABASE_PATH"] == str(result.database_path)
     assert env["BIND_HOST"] == "127.0.0.1"
     assert env["BIND_PORT"] == "8765"
