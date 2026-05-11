@@ -118,17 +118,17 @@ def apply_env(result: QuickstartResult) -> dict[str, str]:
     """Compute the environment overrides the in-process uvicorn run needs.
 
     Returned as a dict so callers can choose to ``os.environ.update`` it
-    (the CLI does) or inspect it (tests do). The ``REDIS_URL`` is
-    intentionally left at its default-ish value pointing at a port the
-    quickstart user is unlikely to be running Redis on; the cache layer
-    silently degrades when it can't connect.
+    (the CLI does) or inspect it (tests do). ``REDIS_URL`` is set to
+    ``"none"`` so the cache layer skips Redis entirely without attempting
+    a connection or emitting warnings — quickstart is explicitly single-
+    user with no Redis available.
     """
     return {
         "REGISTRY_PATH": str(result.registry_json),
         "DATABASE_PATH": str(result.database_path),
         "BIND_HOST": result.bind_host,
         "BIND_PORT": str(result.bind_port),
-        "REDIS_URL": "redis://127.0.0.1:6379/0",
+        "REDIS_URL": "none",
         # No proposer override: with REGISTRY_PATH set on a writable
         # directory the auto-detector picks ``local_file`` (the
         # recommended single-team backend).
