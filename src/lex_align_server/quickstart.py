@@ -124,7 +124,7 @@ def apply_env(result: QuickstartResult) -> dict[str, str]:
     silently degrades when it can't connect.
     """
     return {
-        "REGISTRY_PATH": str(result.registry_yml),
+        "REGISTRY_PATH": str(result.registry_json),
         "DATABASE_PATH": str(result.database_path),
         "BIND_HOST": result.bind_host,
         "BIND_PORT": str(result.bind_port),
