@@ -1,6 +1,10 @@
 """Dashboard pages.
 
-Four pages render server-side and fetch their data from the JSON API:
+``/`` is a welcome landing page. A shared side panel (``_sidebar.html``)
+links the landing page and every dashboard so operators can switch views
+without retyping URLs.
+
+Four dashboards render server-side and fetch their data from the JSON API:
 
 - ``/dashboard/security`` is a vulnerability-posture view: severity buckets,
   packages with the worst CVE history, and the "hot" cell — registry-allowed
@@ -29,6 +33,14 @@ from fastapi.templating import Jinja2Templates
 router = APIRouter()
 _TEMPLATE_DIR = Path(__file__).parent / "templates"
 templates = Jinja2Templates(directory=str(_TEMPLATE_DIR))
+
+
+@router.get("/", response_class=HTMLResponse)
+async def home(request: Request) -> HTMLResponse:
+    return templates.TemplateResponse(
+        request, "home.html",
+        {"title": "Welcome to lex-align"},
+    )
 
 
 @router.get("/dashboard/security", response_class=HTMLResponse)

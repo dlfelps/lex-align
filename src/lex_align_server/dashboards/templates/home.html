@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>{{ title }}</title>
+<style>
+  :root {
+    --border: #e3e3e3;
+    --bg: #fafafa;
+    --muted: #666;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: system-ui, sans-serif;
+    max-width: 1100px;
+    margin: 1.5rem auto;
+    padding: 0 1rem;
+    color: #222;
+  }
+  h1 { margin-bottom: 0.25rem; }
+  .subtitle { color: var(--muted); margin-top: 0; max-width: 60ch; }
+  .hero {
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: 8px; padding: 1.4rem 1.6rem; margin: 1.2rem 0 1.8rem;
+  }
+  .hero p { margin: 0.4rem 0 0; color: #333; max-width: 65ch; }
+  .hero code {
+    background: #f1f5f9; padding: 0.1rem 0.35rem;
+    border-radius: 3px; font-size: 0.85rem;
+  }
+  .cards {
+    display: grid; grid-template-columns: repeat(2, 1fr); gap: 1rem;
+  }
+  @media (max-width: 720px) { .cards { grid-template-columns: 1fr; } }
+  .card {
+    display: block; text-decoration: none; color: inherit;
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: 1rem 1.2rem; background: #fff; transition: border-color 0.1s;
+  }
+  .card:hover { border-color: #4b6cb7; }
+  .card h3 { margin: 0 0 0.3rem; font-size: 1.05rem; color: #1f2430; }
+  .card p { margin: 0; color: var(--muted); font-size: 0.9rem; }
+</style>
+</head>
+<body>
+{% include "_sidebar.html" %}
+<h1>{{ title }}</h1>
+<p class="subtitle">
+  Centralised governance for AI-generated dependency changes.
+</p>
+
+<div class="hero">
+  <p>
+    This server is the source of truth for the dependency registry, the OSV
+    CVE feed, and the license policy. Clients run
+    <code>lex-align-client check</code> before adding or bumping a runtime
+    dependency and the verdict is recorded here.
+  </p>
+  <p>
+    Pick a dashboard below, or use the side panel to switch between views at
+    any time.
+  </p>
+</div>
+
+<div class="cards">
+  <a class="card" href="/dashboard/security">
+    <h3>Security posture</h3>
+    <p>Severity buckets, worst-offending packages, and registry-allowed
+       packages that have started attracting CVE denials.</p>
+  </a>
+  <a class="card" href="/dashboard/legal">
+    <h3>Legal compliance</h3>
+    <p>License breakdown by verdict, unknown-license policy performance, and
+       the projects pulling the most non-compliant packages.</p>
+  </a>
+  <a class="card" href="/dashboard/agents">
+    <h3>Agent activity</h3>
+    <p>Which agent identities are submitting evaluations, and the recent
+       activity behind each one.</p>
+  </a>
+  <a class="card" href="/dashboard/registry">
+    <h3>Registry workshop</h3>
+    <p>Triage pending approval requests, edit package rules live, and export
+       the resulting registry as YAML.</p>
+  </a>
+</div>
+</body>
+</html>
