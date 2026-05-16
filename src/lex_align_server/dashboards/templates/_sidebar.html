@@ -1,0 +1,50 @@
+{% set _p = request.url.path %}
+<style>
+  :root { --lx-sb-w: 218px; }
+  .lx-sidebar {
+    position: fixed; top: 0; left: 0; bottom: 0; width: var(--lx-sb-w);
+    background: #1f2430; color: #cbd2e0; padding: 1rem 0 1.5rem;
+    overflow-y: auto; font-family: system-ui, sans-serif; z-index: 50;
+  }
+  .lx-sidebar .lx-brand {
+    font-weight: 700; color: #fff; font-size: 1.05rem;
+    padding: 0 1.1rem 0.9rem; letter-spacing: 0.02em;
+  }
+  .lx-sidebar .lx-brand small {
+    display: block; color: #8b94a7; font-weight: 400;
+    font-size: 0.72rem; margin-top: 0.15rem;
+  }
+  .lx-sidebar a {
+    display: block; padding: 0.55rem 1.1rem; color: #cbd2e0;
+    text-decoration: none; font-size: 0.92rem;
+    border-left: 3px solid transparent;
+  }
+  .lx-sidebar a:hover { background: #2a3140; color: #fff; }
+  .lx-sidebar a.active {
+    background: #2a3140; color: #fff;
+    border-left-color: #4b6cb7; font-weight: 600;
+  }
+  .lx-sidebar .lx-section {
+    color: #6b7488; font-size: 0.7rem; text-transform: uppercase;
+    letter-spacing: 0.08em; padding: 1.1rem 1.1rem 0.3rem;
+  }
+  body { margin-left: var(--lx-sb-w) !important; }
+  @media (max-width: 760px) {
+    .lx-sidebar {
+      position: static; width: auto; bottom: auto;
+      display: flex; flex-wrap: wrap; padding: 0.4rem; gap: 0.15rem;
+    }
+    .lx-sidebar .lx-brand, .lx-sidebar .lx-section { display: none; }
+    .lx-sidebar a { border-left: none; padding: 0.4rem 0.7rem; border-radius: 4px; }
+    body { margin-left: auto !important; }
+  }
+</style>
+<nav class="lx-sidebar">
+  <div class="lx-brand">lex-align<small>governance server</small></div>
+  <a href="/" class="{{ 'active' if _p == '/' else '' }}">Welcome</a>
+  <div class="lx-section">Dashboards</div>
+  <a href="/dashboard/security" class="{{ 'active' if _p == '/dashboard/security' else '' }}">Security posture</a>
+  <a href="/dashboard/legal" class="{{ 'active' if _p == '/dashboard/legal' else '' }}">Legal compliance</a>
+  <a href="/dashboard/agents" class="{{ 'active' if _p == '/dashboard/agents' else '' }}">Agent activity</a>
+  <a href="/dashboard/registry" class="{{ 'active' if _p == '/dashboard/registry' else '' }}">Registry workshop</a>
+</nav>
