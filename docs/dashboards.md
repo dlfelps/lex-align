@@ -45,11 +45,7 @@ Key pieces:
 - **Export YAML** — last-resort manual save. Useful when running with
   `log_only`.
 
-<!-- TODO: image — screenshot of the registry workshop with both pending
-panels populated and a package being edited -->
-*[image placeholder: registry workshop showing pending approval and
-implicit-candidates panels above the package table, with the edit
-modal open]*
+![descriptive alt text](assets/registry1.jpeg){ width="900" }
 
 ---
 
@@ -87,11 +83,7 @@ Page sections:
 - **Recent denials** — the existing 100-row tail with project, package,
   license, reason, and the agent identity that triggered it.
 
-<!-- TODO: image — screenshot of the legal dashboard with KPIs,
-breakdown table, and stacked bars visible -->
-*[image placeholder: legal dashboard showing license-breakdown table
-with stacked verdict-mix bars, plus the unknown-license panel and top
-projects table]*
+![descriptive alt text](assets/legal.jpeg){ width="900" }
 
 ### Reading the breakdown
 
@@ -144,11 +136,7 @@ Page sections:
   and which packages they hit.
 - **Recent CVE denials** — the chronological tail.
 
-<!-- TODO: image — screenshot of the security dashboard with the "hot
-packages" panel populated and a critical-severity KPI lit up -->
-*[image placeholder: security dashboard showing severity KPIs across
-the top, the red "already-approved packages" panel below, and the
-top-packages and top-CVEs tables underneath]*
+![descriptive alt text](assets/security.jpeg){ width="900" }
 
 ### Background CVE re-scan
 
@@ -203,9 +191,6 @@ audit row by `(agent_model, agent_version)` so operators can answer
 client sends propagate into every audit row; rows without them collapse
 into a single `unknown` bucket.
 
-<!-- TODO: image — screenshot of the agents dashboard -->
-*[image placeholder: agents dashboard showing the per-agent aggregate
-table above the recent-evaluations table]*
 
 ---
 
